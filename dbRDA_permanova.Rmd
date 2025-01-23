@@ -13,7 +13,6 @@ library(vegan)
 library(pairwiseAdonis)
 library(tidyverse)
 library(phyloseq)
-library(readxl)
 ```
 
 # Read in data and create data OTU/sample data tables
