@@ -93,3 +93,24 @@ p<-ggplot(data=axes, aes(x=CAP1, y=CAP2, fill=Domestication, shape=level_order))
   theme_classic();p
 ```
 
+# Create ordination for unconstrained PCoA
+```{r}
+sample_data(P.rel)$Stage <- as.factor(sample_data(P.rel)$Stage)
+
+GloPa.pcoa = ordinate(P.rel, method="PCoA", distance=dist)
+```
+
+## skree plot
+```{r}
+plot_scree(GloPa.pcoa, "Scree plot for Global Patterns PCoA")
+```
+
+## pcoa plot
+```{r}
+p <- plot_ordination(P.rel, GloPa.pcoa, "samples", color="Stage") + 
+  geom_point(size=5) +
+  scale_color_manual(values = c('firebrick','darkorange','darkslategray1','darkblue','dodgerblue'))+
+  stat_ellipse(aes(group= Stage, color= Stage), type='t', level=0.95) +
+  theme_classic();p
+```
+
