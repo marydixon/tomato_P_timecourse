@@ -1,0 +1,85 @@
+---
+title: "diff_abund_functions"
+author: "MD"
+date: '`r Sys.Date()`'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(vegan)
+library(microbiomeMarker)
+library(tidyverse)
+library(phyloseq)
+library(readxl)
+```
+
+# Load data and create dataframes
+```{r}
+P.time <- readRDS('phyloseq/P.Time.RDS')
+P.count <- P.time
+for (n in 1:nsamples(P.count)) {
+  otu_table(P.count)[,n] <- round(otu_table(P.time)[,n] * sample_data(P.time)$Reads.16S[n],0)
+}
+
+otu_table(P.count)[is.na(otu_table(P.count))] <- 0
+#saveRDS(P.count, 'phyloseq/P.Time.count.RDS')
+#P.count <- readRDS('phyloseq/P.Time.count.RDS')
+P.sub <- subset_samples(P.count, Reads.16S >= 10000)
+colnames(tax_table(P.sub)) <- c('Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species')
+```
+
+# Run deseq2 through microbiome marker and filter for p <0.05 and logFC >2
+```{r}
+out.glom <- microbiomeMarker::run_deseq2(
+  P.sub, 
+  group="Domestication",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c('Wild','Modern'))
+out<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2)
+```
+
+# Get data ready to graph - sort high to low and make feature a factor
+```{r}
+x = tapply(out$ef_logFC, out$feature, function(x) max(x))
+x = sort(x, TRUE)
+out$feature = factor(as.character(out$feature), levels=names(x))
+```
+
+# Diff abund plot
+```{r}
+p<-ggplot(out, aes(x=feature, y=(ef_logFC), color=enrich_group)) + 
+  geom_point(size=5) +
+  geom_point(shape = 1,size = 5,colour = "black")+
+  geom_hline(yintercept = -2,color='gray50')+
+  geom_hline(yintercept = 2,color='gray50')+
+  scale_color_manual(values = c('darkblue','darkorange'))+
+  labs(y='Log Fold Change')+
+  theme(axis.text.x = element_text(angle = -90, hjust =0, vjust=0.5),
+        axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        legend.key = element_blank(),
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.title = element_blank(),
+        legend.position = c(0.1,0.1),
+        strip.text = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+```
+
+# load kegg data 
+```{r}
+kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
+kegg <- kegg %>%
+  mutate_if(is.numeric, replace_na, replace=0)
+```
+

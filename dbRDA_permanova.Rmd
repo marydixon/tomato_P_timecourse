@@ -11,8 +11,6 @@ editor_options:
 ```{r}
 library(vegan)
 library(pairwiseAdonis)
-library(RColorBrewer)
-library(microbiomeMarker)
 library(tidyverse)
 library(phyloseq)
 library(readxl)
