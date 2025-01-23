@@ -76,7 +76,7 @@ kruskal.test(Abundance ~ Domestication, data = dlv_u) # NS
 kruskal.test(Abundance ~ Domestication, data = def_f) # NS
 kruskal.test(Abundance ~ Domestication, data = def_u) # ***
 kruskal.test(Abundance ~ Domestication, data = dlf_f) # NS
-kruskal.test(Abundance ~ Domestication, data = dlf_u) # ***
+kruskal.test(Abundance ~ Domestication, data = dlf_u) # ** i noticed this...
 ```
 
 # Get data ready for graphs 
