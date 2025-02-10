@@ -1,19 +1,25 @@
 ---
-title: "regression"
+title: "Biomass and PSF"
 author: "MD"
-date: "`r Sys.Date()`"
-output: html_document
-editor_options: 
-  chunk_output_type: console
+date: '`r Sys.Date()`'
+output: 
+ html_document:
+   toc: true
+   toc_float: true
+   editor_options:
+   chunck_output_type: console
+   chunk_output_type: console
 ---
-
+# Setup
+ 
+## Load libraries 
 ```{r, include = F}
 library(tidyverse)
 library(car)
 library(emmeans)
 ```
 
-Load data and view data
+## Load data
 ```{r, echo=F}
 d <- read.csv('Data/Biomass_TimeCourse.csv') %>% 
   filter(.,!is.na(Shoot_Biomass_g)) %>% 
@@ -27,12 +33,15 @@ d<- select(d, Sample_ID, Rep, Domestication, Harvest, Fertilization, Shoot_Bioma
 
 head(d)
 par(mfrow=c(2,2))
+options(contrasts = c("contr.sum", "contr.poly"))
+
 ```
 
-Shoot
+# Analysis
+## Shoot
+### Model fitting
+
 ```{r}
-#Important but pesky: Change contrasts options to get meaningful Type 3 tests!
-options(contrasts = c("contr.sum", "contr.poly"))
 mod <- lm(log(Shoot_Biomass_g) ~  Fertilization*Domestication*Harvest, 
            data = d)
 Anova(mod, type = 3)
@@ -55,7 +64,7 @@ names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
-
+### Data visualization
 ```{r}
 p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
@@ -72,10 +81,12 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
-
+#ggsave(plot=p, 'output/shoot_biomass.png', width = 12, height = 6)
 ```
 
-Root
+## Root
+
+### Model fitting
 ```{r}
 mod <- lm(log(Root_Biomas_g) ~  Fertilization*Domestication*Harvest, 
            data = d)
@@ -97,7 +108,7 @@ names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
-
+### Data visualization
 ```{r}
 p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
@@ -114,10 +125,13 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
+ggsave(plot=p, 'output/root_biomass.png', width = 12, height = 6)
 
 ```
 
-Rel shoot
+## Relative shoot
+
+### Generate relative values 
 ```{r}
 rel_shoot <- d %>% 
   dplyr::select(Harvest,Domestication,Fertilization,Rep,Shoot_Biomass_g) %>% 
@@ -136,6 +150,7 @@ rel_root <- d %>%
   filter(!is.na(Rel.Root)) 
 ```
 
+### Model fitting
 ```{r}
 mod <- lm(log(Rel.Shoot) ~  Domestication*Harvest, 
            data = rel_shoot)
@@ -157,7 +172,7 @@ names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
-
+### Data visualization
 ```{r}
 p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
@@ -174,10 +189,12 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
 
+ggsave(plot=p, 'output/relative_shoot_biomass.png', width = 12, height = 6)
+
 ```
 
-Rel root
-
+## Relative root
+### Model fitting
 ```{r}
 mod <- lm(log(Rel.Root) ~  Domestication*Harvest, 
            data = rel_root)
@@ -200,6 +217,7 @@ names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
+### Data visualization
 
 ```{r}
 p <- ggplot(aes(x=Harvest, y=response), data = df) +
@@ -216,10 +234,13 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
+ggsave(plot=p, 'output/relative_root_biomass.png', width = 12, height = 6)
 
 ```
 
-psf
+## Phosphorus stress factor
+
+## Model fitting
 ```{r}
 mod <- lm(log(PSF) ~  Domestication*Harvest, 
            data = rel_shoot)
@@ -242,7 +263,7 @@ names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
-
+### Data visualization
 ```{r}
 p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
@@ -258,5 +279,6 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
+ggsave(plot=p, 'output/p_stress_factor.png', width = 12, height = 6)
 
 ```
