@@ -16,17 +16,22 @@ library(microbiomeMarker)
 library(tidyverse)
 library(phyloseq)
 library(readxl)
+library(emmeans)
+library(car)
 ```
 
-
-# Read in data
+# Setup
+## Read in data
 ```{r}
 kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
 kegg <- kegg %>%
   mutate_if(is.numeric, replace_na, replace=0)
+
+P.rel <- readRDS('phyloseq/P.Time.rel.RDS')
+P.rel <- subset_samples(P.rel, Reads.16S > 10000)
 ```
 
-# Select p decomp
+# P decomposers
 ```{r}
 wanted <- kegg[kegg$phoA > 0 | kegg$phoD > 0 | kegg$PHO > 0 | kegg$appA > 0 | kegg$phoN > 0 ,  ]$Species
 P.sub <- subset_taxa(P.rel, Species %in% wanted)
@@ -35,6 +40,12 @@ P.glom <- tax_glom(P.sub, taxrank="Species")
 P.glom <- prune_taxa(taxa_sums(P.glom) > 0, P.glom)
 pdecomp <- psmelt(P.glom) %>% 
   filter(., Abundance != 0)
+options(contrasts = c("contr.sum", "contr.poly"))
+
+pdecomp <- pdecomp %>%
+mutate(Stage = as_factor(Stage)) %>%
+mutate(Stage = fct_relevel(Stage, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+table(pdecomp$Stage)
 
 ```
 
@@ -43,66 +54,36 @@ pdecomp <- psmelt(P.glom) %>%
 mod <- lm(log(Abundance) ~  Stage*Fertilization*Domestication, data=pdecomp)
 par(mfrow=c(2,2))
 plot(mod)
-summary(mod)
+
+Anova(mod, type = 3)
+emmip(mod, Domestication ~ Stage | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Stage|Fertilization)
+emmeans(mod, ~ Fertilization*Domestication*Stage, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Stage, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Stage), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication, Stage, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Stage'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
 ```
 
-# Subset data for each time point and fertilization
-```{r}
-ds <- filter(pdecomp, Stage == 'Seedling')
-dev <- filter(pdecomp, Stage == 'Early_Vegetative')
-dlv <-filter(pdecomp, Stage == 'Late_Vegetative')
-def <- filter(pdecomp, Stage == 'Early_Flower')
-dlf <- filter(pdecomp, Stage == 'Late_Flower')
-ds_f <- filter(ds, Fertilization == 'Fertilized')
-ds_u <- filter(ds, Fertilization == 'Unfertilized')
-dev_f <- filter(dev, Fertilization == 'Fertilized')
-dev_u <- filter(dev, Fertilization == 'Unfertilized')
-dlv_f <- filter(dlv, Fertilization == 'Fertilized')
-dlv_u <- filter(dlv, Fertilization == 'Unfertilized')
-def_f <- filter(def, Fertilization == 'Fertilized')
-def_u <- filter(def, Fertilization == 'Unfertilized')
-dlf_f <- filter(dlf, Fertilization == 'Fertilized')
-dlf_u <- filter(dlf, Fertilization == 'Unfertilized')
-```
 
-# KW tests
-```{r}
-kruskal.test(Abundance ~ Domestication, data = ds_f)  # ***
-kruskal.test(Abundance ~ Domestication, data = ds_u)  # NS
-kruskal.test(Abundance ~ Domestication, data = dev_f) # ***
-kruskal.test(Abundance ~ Domestication, data = dev_u) # NS
-kruskal.test(Abundance ~ Domestication, data = dlv_f) # NS
-kruskal.test(Abundance ~ Domestication, data = dlv_u) # NS
-kruskal.test(Abundance ~ Domestication, data = def_f) # NS
-kruskal.test(Abundance ~ Domestication, data = def_u) # ***
-kruskal.test(Abundance ~ Domestication, data = dlf_f) # NS
-kruskal.test(Abundance ~ Domestication, data = dlf_u) # ** i noticed this...
-```
 
-# Get data ready for graphs 
+### Data visualization
 ```{r}
-pdec.sum <- summarize(group_by(pdecomp, Stage, Fertilization, Domestication),
-                      n=n(),
-                      mean=mean(Abundance),
-                      sd=sd(Abundance),
-                      se=sd/sqrt(n))
-level_order <- factor(pdecomp$Stage, levels = c('Seedling','Early_Vegetative','Late_Vegetative','Early_Flower','Late_Flower'))
-level_order.sum <- factor(pdec.sum$Stage, levels = c('Seedling','Early_Vegetative','Late_Vegetative','Early_Flower','Late_Flower'))
-```
-
-# Graph p decomp
-
-```{r}
-p <- ggplot() +
-  geom_line(aes(color=Domestication,group=Domestication,
-                x=level_order, y=Abundance), 
-            data = pdecomp,
-            stat='summary',fun='mean', size=1)+
-  geom_errorbar(data=pdec.sum, width=0.25,alpha=0.5,
-                aes(ymin = mean - se, ymax = mean + se, 
-                    group=Domestication,color=Domestication,
-                    x=level_order.sum))+
+p <- ggplot(aes(x=Stage, y=response), data = df) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
   scale_color_manual(values = c('darkblue','darkorange2'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   facet_wrap(~Fertilization, ncol=2)+
   theme_classic()+
   labs(y="Phosphorus Decomposer Relative Abundance")+
@@ -110,7 +91,9 @@ p <- ggplot() +
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
+#ggsave(plot=p, 'output/p_decomposer.png', width = 12, height = 6)
 ```
+
 
 
 # Select P solubilizer
@@ -122,65 +105,48 @@ P.glom <- tax_glom(P.sub, taxrank="Species")
 P.glom <- prune_taxa(taxa_sums(P.glom) > 0, P.glom)
 psol <- psmelt(P.glom) %>% 
   filter(., Abundance != 0)
-```
-
-# Subset for each time point and fertilization
-```{r}
-ds <- filter(psol, Stage == 'Seedling')
-dev <- filter(psol, Stage == 'Early_Vegetative')
-dlv <-filter(psol, Stage == 'Late_Vegetative')
-def <- filter(psol, Stage == 'Early_Flower')
-dlf <- filter(psol, Stage == 'Late_Flower')
-ds_f <- filter(ds, Fertilization == 'Fertilized')
-ds_u <- filter(ds, Fertilization == 'Unfertilized')
-dev_f <- filter(dev, Fertilization == 'Fertilized')
-dev_u <- filter(dev, Fertilization == 'Unfertilized')
-dlv_f <- filter(dlv, Fertilization == 'Fertilized')
-dlv_u <- filter(dlv, Fertilization == 'Unfertilized')
-def_f <- filter(def, Fertilization == 'Fertilized')
-def_u <- filter(def, Fertilization == 'Unfertilized')
-dlf_f <- filter(dlf, Fertilization == 'Fertilized')
-dlf_u <- filter(dlf, Fertilization == 'Unfertilized')
-```
-
-# Kruskal wallis test for each time point and fertilization
-```{r}
-kruskal.test(Abundance ~ Domestication, data = ds_f)  #NS
-kruskal.test(Abundance ~ Domestication, data = ds_u)  #NS
-kruskal.test(Abundance ~ Domestication, data = dev_f) #***
-kruskal.test(Abundance ~ Domestication, data = dev_u) #NS
-kruskal.test(Abundance ~ Domestication, data = dlv_f) #NS
-kruskal.test(Abundance ~ Domestication, data = dlv_u) #NS
-kruskal.test(Abundance ~ Domestication, data = def_f) #NS
-kruskal.test(Abundance ~ Domestication, data = def_u) #***
-kruskal.test(Abundance ~ Domestication, data = dlf_f) #NS
-kruskal.test(Abundance ~ Domestication, data = dlf_u) #***
-```
-
-# Create df for graph (summary for error bars and factor levels for x axis)
-```{r}
-psol.sum <- summarize(group_by(psol, Stage, Fertilization, Domestication),
-                      n=n(),
-                      mean=mean(Abundance),
-                      sd=sd(Abundance),
-                      se=sd/sqrt(n))
-level_order <- factor(psol$Stage, levels = c('Seedling','Early_Vegetative','Late_Vegetative','Early_Flower','Late_Flower'))
-level_order.sum <- factor(psol.sum$Stage, levels = c('Seedling','Early_Vegetative','Late_Vegetative','Early_Flower','Late_Flower'))
+psol <- psol %>%
+mutate(Stage = as_factor(Stage)) %>%
+mutate(Stage = fct_relevel(Stage, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+table(psol$Stage)
 
 ```
 
-# Graph p solubilizers
+
+# Run model (log transform needed)
 ```{r}
-p <- ggplot() +
-  geom_line(aes(color=Domestication,group=Domestication,
-                x=level_order, y=Abundance), 
-            data = psol,
-            stat='summary',fun='mean', size=1)+
-  geom_errorbar(data=psol.sum, width=0.25,alpha=0.5,
-                aes(ymin = mean - se, ymax = mean + se, 
-                                  group=Domestication,color=Domestication,
-                                  x=level_order.sum))+
+mod <- lm(log(Abundance) ~  Stage*Fertilization*Domestication, data=psol)
+par(mfrow=c(2,2))
+plot(mod)
+
+Anova(mod, type = 3)
+emmip(mod, Domestication ~ Stage | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Stage|Fertilization)
+emmeans(mod, ~ Fertilization*Domestication*Stage, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Stage, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Stage), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication, Stage, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Stage'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+```
+
+
+### Data visualization
+```{r}
+p <- ggplot(aes(x=Stage, y=response), data = df) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
   scale_color_manual(values = c('darkblue','darkorange2'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   facet_wrap(~Fertilization, ncol=2)+
   theme_classic()+
   labs(y="Phosphorus Solubilizer Relative Abundance")+
@@ -188,5 +154,7 @@ p <- ggplot() +
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
+#ggsave(plot=p, 'output/p_solubilizer.png', width = 12, height = 6)
 ```
+
 

@@ -22,12 +22,12 @@ library(emmeans)
 
 ## Load data
 ```{r, echo=F}
-d <- read.csv('Data/P_Concentration.csv') %>% 
-  filter(., Harvest != 'Seedling')
+d <- read.csv('Data/Olsen-P.csv') %>% 
+  filter(., !is.na(mg.kg))
 
 d <- d %>%
 mutate(Harvest = as_factor(Harvest)) %>%
-mutate(Harvest = fct_relevel(Harvest, "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
 table(d$Harvest)
 
 
@@ -38,14 +38,19 @@ options(contrasts = c("contr.sum", "contr.poly"))
 ```
 
 # Analysis
-## P Concentration
+## Olsen P
 ### Model fitting
 
 ```{r}
-mod <- lm((P.ppm.) ~  Fertilization*Domestication*Harvest, 
+d <- d[-111,]
+
+d <- d[-9,]
+mod <- lm(sqrt(mg.kg) ~  Fertilization*Domestication*Harvest, 
            data = d)
 
 plot(mod)
+
+
 summary(aov(mod))
 #Anova(mod, type = 3)
 emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
@@ -55,11 +60,11 @@ emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
 emmeans(mod, ~ Fertilization*Domestication, type = "response")
 df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response"))
 
-res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication), adjust = "fdr")
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Harvest), adjust = "fdr")
 plot(res[[1]], horizontal=F)
 groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
-  select(., Fertilization, Domestication, .group)
-df <- inner_join(df,groups, by = c('Fertilization', 'Domestication'))
+  select(., Fertilization, Domestication,Harvest, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
 
 names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
@@ -77,12 +82,12 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   facet_wrap(~Fertilization, ncol=2)+
   theme_classic()+
-  labs(y="Phosphorus Concentration (mg/kg)")+
+  labs(y="Olsen Phosphorus Concentration (mg/kg)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
         axis.title.x = element_blank());p
-#ggsave(plot=p, 'output/shoot_biomass.png', width = 12, height = 6)
+#ggsave(plot=p, 'output/olsen_p.png', width = 12, height = 6)
 ```
 
 ## P Uptake
