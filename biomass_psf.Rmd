@@ -17,6 +17,7 @@ output:
 library(tidyverse)
 library(car)
 library(emmeans)
+library(patchwork)
 ```
 
 ## Load data
@@ -24,6 +25,11 @@ library(emmeans)
 d <- read.csv('Data/Biomass_TimeCourse.csv') %>% 
   filter(.,!is.na(Shoot_Biomass_g)) %>% 
   filter(.,!is.na(Root_Biomas_g))
+
+d <- d %>%
+mutate(Fertilization = as_factor(Fertilization)) %>%
+mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized", "Fertilized"))
+table(d$Fertilization)
 
 d <- d %>%
 mutate(Harvest = as_factor(Harvest)) %>%
@@ -66,7 +72,7 @@ df$letters <- gsub(' ','',df$letters)
 
 ### Data visualization
 ```{r}
-p <- ggplot(aes(x=Harvest, y=response), data = df) +
+p_shoot <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
             stat='summary',fun='mean',size=1) +
   geom_errorbar(width=0.25,alpha=0.5,
@@ -76,11 +82,12 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   facet_wrap(~Fertilization, ncol=2)+
   theme_classic()+
-  labs(y="Shoot Biomass (g)")+
+  labs(y="Biomass (g)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank());p_shoot
 #ggsave(plot=p, 'output/shoot_biomass.png', width = 12, height = 6)
 ```
 
@@ -110,9 +117,9 @@ df$letters <- gsub(' ','',df$letters)
 
 ### Data visualization
 ```{r}
-p <- ggplot(aes(x=Harvest, y=response), data = df) +
+p_root <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',size=1) +
+            stat='summary',fun='mean',linewidth=1) +
   geom_errorbar(width=0.25,alpha=0.5,
                 aes(ymin = lower.CL, ymax = upper.CL, 
                     group=Domestication,color=Domestication))+
@@ -120,14 +127,20 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   facet_wrap(~Fertilization, ncol=2)+
   theme_classic()+
-  labs(y="Root Biomass (g)")+
+  labs(y="Biomass (g)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
-ggsave(plot=p, 'output/root_biomass.png', width = 12, height = 6)
+        strip.text = element_blank(),
+        axis.title.x = element_blank());p_root
+#ggsave(plot=p, 'output/root_biomass.png', width = 12, height = 6)
 
 ```
+
+```{r}
+p_shoot/p_root + plot_layout(axis_titles = "collect") + plot_layout(guides = "collect")
+```
+
 
 ## Relative shoot
 
@@ -174,20 +187,20 @@ df$letters <- gsub(' ','',df$letters)
 
 ### Data visualization
 ```{r}
-p <- ggplot(aes(x=Harvest, y=response), data = df) +
+p_rshoot <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',size=1) +
+            stat='summary',fun='mean',linewidth=1) +
   geom_errorbar(width=0.25,alpha=0.5,
                 aes(ymin = lower.CL, ymax = upper.CL, 
                     group=Domestication,color=Domestication))+
   scale_color_manual(values = c('darkblue','darkorange2'))+
   geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   theme_classic()+
-  labs(y="Relative Shoot Biomass (%)")+
+  labs(y="Relative Biomass (%)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
+        axis.title.x = element_blank());p_rshoot
 
 ggsave(plot=p, 'output/relative_shoot_biomass.png', width = 12, height = 6)
 
@@ -220,7 +233,7 @@ df$letters <- gsub(' ','',df$letters)
 ### Data visualization
 
 ```{r}
-p <- ggplot(aes(x=Harvest, y=response), data = df) +
+p_rroot <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
             stat='summary',fun='mean',size=1) +
   geom_errorbar(width=0.25,alpha=0.5,
@@ -229,14 +242,15 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
   scale_color_manual(values = c('darkblue','darkorange2'))+
   geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
   theme_classic()+
-  labs(y="Relative Root Biomass (%)")+
+  labs(y="Relative Biomass (%)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
+        axis.title.x = element_blank());p_rroot
 ggsave(plot=p, 'output/relative_root_biomass.png', width = 12, height = 6)
 
 ```
+
 
 ## Phosphorus stress factor
 
@@ -265,7 +279,7 @@ df$letters <- gsub(' ','',df$letters)
 
 ### Data visualization
 ```{r}
-p <- ggplot(aes(x=Harvest, y=response), data = df) +
+p_psf <- ggplot(aes(x=Harvest, y=response), data = df) +
   geom_line(aes(color=Domestication, group=Domestication),
             stat='summary',fun='mean',size=1) +
   geom_errorbar(width=0.25,alpha=0.5,
@@ -278,7 +292,12 @@ p <- ggplot(aes(x=Harvest, y=response), data = df) +
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
+        axis.title.x = element_blank());p_psf
 ggsave(plot=p, 'output/p_stress_factor.png', width = 12, height = 6)
 
 ```
+
+```{r}
+(p_rshoot+p_rroot + plot_layout(axis_titles = "collect"))/p_psf  + plot_layout(guides = "collect")
+```
+
