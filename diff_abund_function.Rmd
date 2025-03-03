@@ -12,11 +12,18 @@ library(vegan)
 library(microbiomeMarker)
 library(tidyverse)
 library(phyloseq)
+library(ggbeeswarm)
 library(readxl)
 ```
 
 # Load data and create dataframes
 ```{r}
+# load kegg data 
+
+kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
+kegg <- kegg %>%
+  mutate_if(is.numeric, replace_na, replace=0)
+
 P.time <- readRDS('phyloseq/P.Time.RDS')
 P.count <- P.time
 for (n in 1:nsamples(P.count)) {
@@ -28,58 +35,886 @@ otu_table(P.count)[is.na(otu_table(P.count))] <- 0
 #P.count <- readRDS('phyloseq/P.Time.count.RDS')
 P.sub <- subset_samples(P.count, Reads.16S >= 10000)
 colnames(tax_table(P.sub)) <- c('Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species')
+
+df <- as.data.frame(P.sub@sam_data[["Stage"]])
+names(df)[names(df) == 'P.sub@sam_data[["Stage"]]'] <- 'harvest'
+
+df$group <- ifelse(df$harvest=="Seedling", "1_2",
+                   ifelse(df$harvest=="Early_Vegetative", "1_2",
+                          ifelse(df$harvest=="Late_Vegetative", "3_5",
+                                 ifelse(df$harvest=="Early_Flower", "3_5",
+                             ifelse(df$harvest=="Late_Flower", "3_5", NA)))))
+sample_data(P.sub)$Groups <- df$group
+check1 <- as.data.frame(P.sub@sam_data[["Stage"]])
+check2<- as.data.frame(P.sub@sam_data[["Groups"]])
+check <- cbind(check1, check2)
+                     
+p.u <- subset_samples(P.sub, Fertilization == 'Unfertilized')
+p.f <- subset_samples(P.sub, Fertilization == 'Fertilized')
+uw <-  subset_samples(p.u, Domestication == 'Wild')
+um <-  subset_samples(p.u, Domestication == 'Modern')
+fw <-  subset_samples(p.f, Domestication == 'Wild')
+fm <-  subset_samples(p.f, Domestication == 'Modern')
 ```
 
+
 # Run deseq2 through microbiome marker and filter for p <0.05 and logFC >2
+
+## Unfertilized Wild
 ```{r}
 out.glom <- microbiomeMarker::run_deseq2(
-  P.sub, 
-  group="Domestication",
+  uw, 
+  group="Stage",
   taxa_rank="Species",
   norm="RLE",
   transform="identity",
   p_adjust='fdr', 
   pvalue_cutoff=0.05,
-  contrast=c('Wild','Modern'))
-out<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
-  filter(., abs(ef_logFC) > 2)
+  contrast=c("Early_Vegetative","Seedling"))
+uw_s_ev<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Seedling-Early_Vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  uw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Vegetative","Early_Vegetative"))
+uw_ev_lv<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Early_Vegetative-Late_vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  uw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Flower","Late_Vegetative"))
+uw_lv_ef<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Late_Vegetative-Early_Flower')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  uw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Flower","Early_Flower"))
+uw_ef_lf<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Early_Flower-Late_Flower')
+
+d.uw <- rbind(uw_s_ev, uw_ev_lv, uw_lv_ef, uw_ef_lf) %>% 
+  mutate(., Group = "Wild Unfertilized")
 ```
 
-# Get data ready to graph - sort high to low and make feature a factor
+## Unfertilized Modern
 ```{r}
-x = tapply(out$ef_logFC, out$feature, function(x) max(x))
-x = sort(x, TRUE)
-out$feature = factor(as.character(out$feature), levels=names(x))
+out.glom <- microbiomeMarker::run_deseq2(
+  um, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Vegetative","Seedling"))
+um_s_ev<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Seedling-Early_Vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  um, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Vegetative","Early_Vegetative"))
+um_ev_lv<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Early_Vegetative-Late_vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  um, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Flower","Late_Vegetative"))
+um_lv_ef<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Late_Vegetative-Early_Flower')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  um, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Flower","Early_Flower"))
+um_ef_lf<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Early_Flower-Late_Flower')
+
+d.um <- rbind(um_s_ev, um_ev_lv, um_lv_ef, um_ef_lf)%>% 
+  mutate(., Group = "Modern Unfertilized")
 ```
 
-# Diff abund plot
+
+
+## Fertilized Wild
 ```{r}
-p<-ggplot(out, aes(x=feature, y=(ef_logFC), color=enrich_group)) + 
-  geom_point(size=5) +
-  geom_point(shape = 1,size = 5,colour = "black")+
-  geom_hline(yintercept = -2,color='gray50')+
-  geom_hline(yintercept = 2,color='gray50')+
-  scale_color_manual(values = c('darkblue','darkorange'))+
-  labs(y='Log Fold Change')+
-  theme(axis.text.x = element_text(angle = -90, hjust =0, vjust=0.5),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
+out.glom <- microbiomeMarker::run_deseq2(
+  fw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Vegetative","Seedling"))
+fw_s_ev<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Seedling-Early_Vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Vegetative","Early_Vegetative"))
+fw_ev_lv<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Early_Vegetative-Late_vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Flower","Late_Vegetative"))
+fw_lv_ef<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Late_Vegetative-Early_Flower')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fw, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Flower","Early_Flower"))
+fw_ef_lf<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Wild") %>% 
+  mutate(., Contrast = 'Early_Flower-Late_Flower')
+
+d.fw <- rbind(fw_s_ev, fw_ev_lv, fw_lv_ef, fw_ef_lf)%>% 
+  mutate(., Group = "Wild Fertilized")
+```
+
+
+## Fertilized Modern
+```{r}
+out.glom <- microbiomeMarker::run_deseq2(
+  fm, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Vegetative","Seedling"))
+fm_s_ev<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Seedling-Early_Vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fm, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Vegetative","Early_Vegetative"))
+fm_ev_lv<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Early_Vegetative-Late_vegetative')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fm, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Early_Flower","Late_Vegetative"))
+fm_lv_ef<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Late_Vegetative-Early_Flower')
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fm, 
+  group="Stage",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Late_Flower","Early_Flower"))
+fm_ef_lf<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Modern") %>% 
+  mutate(., Contrast = 'Early_Flower-Late_Flower')
+
+d.fm <- rbind(fm_s_ev, fm_ev_lv, fm_lv_ef, fm_ef_lf)%>% 
+  mutate(., Group = "Modern Fertilized")
+```
+
+# Graphs
+## Together 
+```{r}
+d.all <- rbind(d.uw, d.um, d.fm, d.fw)
+kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
+kegg <- kegg %>%
+  mutate_if(is.numeric, replace_na, replace=0)
+dflist <- d.all$feature
+keggsub <- filter(kegg, Species %in% dflist)
+names(d.all)[names(d.all) == 'feature'] <- 'Species'
+df.kegg <- left_join(d.all,keggsub, by = 'Species')
+
+d<- pivot_longer(df.kegg, cols=hcnA:nosZ, names_to = 'Gene', values_to = 'value') %>%   filter(!value==0)
+
+
+d$Function <- ifelse(d$Gene=="hcnA", "Biocontrol",
+                        ifelse(d$Gene=="budA","Biocontrol",
+                               ifelse(d$Gene=="budC","Biocontrol",
+                                      ifelse(d$Gene=="E3.2.1.6","Biocontrol",                                             ifelse(d$Gene=="E3.2.1.14","Biocontrol",                                                    ifelse(d$Gene=="phlD","Biocontrol",                                                       ifelse(d$Gene=="ituA","Biocontrol",  
+                      ifelse(d$Gene=="fenA", "Biocontrol",
+                        ifelse(d$Gene=="srfAA","Biocontrol",
+                               ifelse(d$Gene=="rifM","Biocontrol",
+                                      ifelse(d$Gene=="phzE","Biocontrol",
+                                             ifelse(d$Gene=="ipdC","Stress",                                                    ifelse(d$Gene=="acdS","Stress",                                                           ifelse(d$Gene=="mbtI","Siderophore",                                                    ifelse(d$Gene=="entA", "Siderophore",
+        ifelse(d$Gene=="pchB","Siderophore",
+           ifelse(d$Gene=="bglX","C decomposition",
+              ifelse(d$Gene=="bglB","C decomposition",
+                 ifelse(d$Gene=="E3.2.1.21","C decomposition",                                          ifelse(d$Gene=="amiE","N decomposition",    
+ifelse(d$Gene=="ureC","N decomposition",                                                    ifelse(d$Gene=="pqqC", "PO4 solubility",
+        ifelse(d$Gene=="phoA","P decomposition",
+           ifelse(d$Gene=="phoD","P decomposition",
+              ifelse(d$Gene=="PHO","P decomposition",
+                 ifelse(d$Gene=="appA","P decomposition",                                          ifelse(d$Gene=="phoN","P decomposition",                             ifelse(d$Gene=="aslA","S decomposition",                                                    ifelse(d$Gene=="nifH", "N-fixation",
+        ifelse(d$Gene=="nifD","N-fixation",
+           ifelse(d$Gene=="nifK","N-fixation",
+              ifelse(d$Gene=="pmoA-amoA","Nitrification",
+                 ifelse(d$Gene=="hao","Nitrification",                                          ifelse(d$Gene=="nirB","Dissimilatory nitrate reduction",    
+ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                                   ifelse(d$Gene=="nrfA", "Dissimilatory nitrate reduction",
+        ifelse(d$Gene=="nirA","Assimilatory nitrate reduction",
+           ifelse(d$Gene=="NIT-6","Assimilatory nitrate reduction",
+              ifelse(d$Gene=="narG","Denitrification",
+                 ifelse(d$Gene=="narH","Denitrification",                                          ifelse(d$Gene=="nirK","Denitrification",    
+ ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
+        ifelse(d$Gene=="norC","Denitrification",
+          ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
+#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
+d.sum <- summarize(group_by(d, Species, enrich_group, Fertilization, Domestication, Gene, Contrast,Function,Group),
+                   n=(n), mean = mean(ef_logFC)) %>% 
+  filter(., Function != 'Assimilatory nitrate reduction') %>% 
+  filter(., Function != 'Dissimilatory nitrate reduction') %>% 
+  filter(., Function != 'Denitrification')
+
+d.sum <- d.sum %>%
+mutate(Function = as_factor(Function)) %>%
+mutate(Function = fct_relevel(Function,  "Biocontrol", "Stress","S decomposition", "C decomposition","N-fixation", "N decomposition", "Nitrification", "Siderophore", "P decomposition", "PO4 solubility")) %>% 
+  mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group,  "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower")) %>% 
+   mutate(Contrast = as_factor(Contrast)) %>%
+mutate(Contrast = fct_relevel(Contrast,  "Seedling-Early_Vegetative", "Early_Vegetative-Late_Vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
+table(d.sum$Function)
+
+d.sum <- d.sum %>%
+mutate(Group = as_factor(Group)) %>%
+mutate(Group = fct_relevel(Group, "Modern Unfertilized", "Wild Unfertilized", "Modern Fertilized", "Wild Fertilized"))
+table(d.sum$Group)
+
+p<-ggplot(d.sum, aes(x=interaction(Contrast,enrich_group), y=(Function), color=Gene)) + 
+  geom_vline(xintercept = 1.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 2.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 3.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 4.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 5.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 6.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 7.5, color = "gray90", linewidth = 0.25)+
+  geom_beeswarm(size=3, alpha = 0.5, cex=0.25) +
+   scale_color_manual(values = c("#EA4691", "#6BFF33", "#2929F0", #acds, amie, appa
+                                 "#BFE75D", "#F9FF76", "#A3A92D", #asla, bglb, bglx
+                                 "#7667A0", "#3F2B78" ,"#26194C", #buda, budx, e32114
+                                 "#6A6F07", "#800080", "#610185", #e32121, e3216, enta
+                                 "#A2CACB", "#A0008D", "#661AFF", #fena, hao, hcna
+                                 "#662341", "#8942DE", "#402B47", #ipdc, itua, mbti
+                                 "#1BB74B", "#39FDA4", "#145437", #nifd, mifh, nifk
+                                 "#A774B8", "#CAB2D6", "#3AF6FC", #pchb, phld, pho
+                                 "#239A9E", "#156062", "#A2CACB",  #phoa, phod, phon
+                                 "#40008C", "#E75DD6", "#38A2B9", #phze, pmoaamoa, pqqc
+                                 "#C3AAE1", "#9145E8", "#38871A"))+ #rifm, srfaa, urec
+  facet_wrap( ~ Group, ncol=1) + 
+  theme_classic()+
+  theme(axis.line = element_line(colour = "black"),
+       # axis.text.x = element_text(angle = 90),
+        axis.title.y = element_blank(),
         legend.key = element_blank(),
-        strip.text.y = element_text(size=8, face="bold"), 
+        legend.position = "none",
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(color='black',size = 10),
+        strip.text = element_text(size=10, face="bold", color= 'black'), 
         legend.title = element_blank(),
-        legend.position = c(0.1,0.1),
-        strip.text = element_blank(),
         strip.background = element_blank(),
         axis.title.x = element_blank());p
 ```
 
-# load kegg data 
+
+
+
+
+
+
+
+## UW
+
 ```{r}
 kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
 kegg <- kegg %>%
   mutate_if(is.numeric, replace_na, replace=0)
+dflist <- d.uw$feature
+keggsub <- filter(kegg, Species %in% dflist)
+names(d.uw)[names(d.uw) == 'feature'] <- 'Species'
+df.kegg <- left_join(d.uw,keggsub, by = 'Species')
+
+d<- pivot_longer(df.kegg, cols=hcnA:nosZ, names_to = 'Gene', values_to = 'value') %>%   filter(!value==0)
+
+
+d$Function <- ifelse(d$Gene=="hcnA", "Biocontrol",
+                        ifelse(d$Gene=="budA","Biocontrol",
+                               ifelse(d$Gene=="budC","Biocontrol",
+                                      ifelse(d$Gene=="E3.2.1.6","Biocontrol",                                             ifelse(d$Gene=="E3.2.1.14","Biocontrol",                                                    ifelse(d$Gene=="phlD","Biocontrol",                                                       ifelse(d$Gene=="ituA","Biocontrol",  
+                      ifelse(d$Gene=="fenA", "Biocontrol",
+                        ifelse(d$Gene=="srfAA","Biocontrol",
+                               ifelse(d$Gene=="rifM","Biocontrol",
+                                      ifelse(d$Gene=="phzE","Biocontrol",
+                                             ifelse(d$Gene=="ipdC","Stress",                                                    ifelse(d$Gene=="acdS","Stress",                                                           ifelse(d$Gene=="mbtI","Siderophore",                                                    ifelse(d$Gene=="entA", "Siderophore",
+        ifelse(d$Gene=="pchB","Siderophore",
+           ifelse(d$Gene=="bglX","C decomposition",
+              ifelse(d$Gene=="bglB","C decomposition",
+                 ifelse(d$Gene=="E3.2.1.21","C decomposition",                                          ifelse(d$Gene=="amiE","N decomposition",    
+ifelse(d$Gene=="ureC","N decomposition",                                                    ifelse(d$Gene=="pqqC", "PO4 solubility",
+        ifelse(d$Gene=="phoA","P decomposition",
+           ifelse(d$Gene=="phoD","P decomposition",
+              ifelse(d$Gene=="PHO","P decomposition",
+                 ifelse(d$Gene=="appA","P decomposition",                                          ifelse(d$Gene=="phoN","P decomposition",                             ifelse(d$Gene=="aslA","S decomposition",                                                    ifelse(d$Gene=="nifH", "N-fixation",
+        ifelse(d$Gene=="nifD","N-fixation",
+           ifelse(d$Gene=="nifK","N-fixation",
+              ifelse(d$Gene=="pmoA-amoA","Nitrification",
+                 ifelse(d$Gene=="hao","Nitrification",                                          ifelse(d$Gene=="nirB","Dissimilatory nitrate reduction",    
+ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                                   ifelse(d$Gene=="nrfA", "Dissimilatory nitrate reduction",
+        ifelse(d$Gene=="nirA","Assimilatory nitrate reduction",
+           ifelse(d$Gene=="NIT-6","Assimilatory nitrate reduction",
+              ifelse(d$Gene=="narG","Denitrification",
+                 ifelse(d$Gene=="narH","Denitrification",                                          ifelse(d$Gene=="nirK","Denitrification",    
+ ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
+        ifelse(d$Gene=="norC","Denitrification",
+          ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
+#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
+d.sum <- summarize(group_by(d, Species, enrich_group, Fertilization, Domestication, Gene, Contrast,Function),
+                   n=(n), mean = mean(ef_logFC)) %>% 
+  filter(., Function != 'Assimilatory nitrate reduction') %>% 
+  filter(., Function != 'Dissimilatory nitrate reduction') %>% 
+  filter(., Function != 'Denitrification')
+
+d.sum <- d.sum %>%
+mutate(Function = as_factor(Function)) %>%
+mutate(Function = fct_relevel(Function,  "Biocontrol", "Stress","S decomposition", "C decomposition","N-fixation", "N decomposition", "Nitrification", "Siderophore", "P decomposition", "PO4 solubility")) %>% 
+  mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group,  "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower")) %>% 
+   mutate(Contrast = as_factor(Contrast)) %>%
+mutate(Contrast = fct_relevel(Contrast,  "Seedling-Early_Vegetative", "Early_Vegetative-Late_Vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
+table(d.sum$Function)
+
+p<-ggplot(d.sum, aes(x=interaction(Contrast,enrich_group), y=(Function), color=Gene)) + 
+  geom_vline(xintercept = 1.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 2.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 3.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 4.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 5.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 6.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 7.5, color = "gray90", linewidth = 0.25)+
+  geom_beeswarm(size=4, alpha = 0.5, cex=1) +
+   scale_color_manual(values = c("#EA4691", "#6BFF33", "#2929F0", #acds, amie, appa
+                                 "#BFE75D", "#F9FF76", "#A3A92D", #asla, bglb, bglx
+                                 "#7667A0", "#3F2B78" ,"#26194C", #buda, budx, e32114
+                                 "#6A6F07", "#800080", "#610185", #e32121, e3216, enta
+                                 "#A2CACB", "#A0008D", "#661AFF", #fena, hao, hcna
+                                 "#662341", "#8942DE", "#402B47", #ipdc, itua, mbti
+                                 "#1BB74B", "#39FDA4", "#145437", #nifd, mifh, nifk
+                                 "#A774B8", "#CAB2D6", "#3AF6FC", #pchb, phld, pho
+                                 "#239A9E", "#156062", "#A2CACB",  #phoa, phod, phon
+                                 "#40008C", "#E75DD6", "#38A2B9", #phze, pmoaamoa, pqqc
+                                 "#C3AAE1", "#9145E8", "#38871A"))+ #rifm, srfaa, urec
+  facet_wrap(Domestication ~ Fertilization, scales = 'free') + 
+  theme_classic()+
+  theme(axis.line = element_line(colour = "black"),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = element_blank(),
+        legend.key = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+```
+
+## UM
+
+```{r}
+dflist <- d.um$feature
+keggsub <- filter(kegg, Species %in% dflist)
+names(d.um)[names(d.um) == 'feature'] <- 'Species'
+df.kegg <- left_join(d.um,keggsub, by = 'Species')
+
+d<- pivot_longer(df.kegg, cols=hcnA:nosZ, names_to = 'Gene', values_to = 'value') %>%   filter(!value==0)
+
+
+d$Function <- ifelse(d$Gene=="hcnA", "Biocontrol",
+                        ifelse(d$Gene=="budA","Biocontrol",
+                               ifelse(d$Gene=="budC","Biocontrol",
+                                      ifelse(d$Gene=="E3.2.1.6","Biocontrol",                                             ifelse(d$Gene=="E3.2.1.14","Biocontrol",                                                    ifelse(d$Gene=="phlD","Biocontrol",                                                       ifelse(d$Gene=="ituA","Biocontrol",  
+                      ifelse(d$Gene=="fenA", "Biocontrol",
+                        ifelse(d$Gene=="srfAA","Biocontrol",
+                               ifelse(d$Gene=="rifM","Biocontrol",
+                                      ifelse(d$Gene=="phzE","Biocontrol",
+                                             ifelse(d$Gene=="ipdC","Stress",                                                    ifelse(d$Gene=="acdS","Stress",                                                           ifelse(d$Gene=="mbtI","Siderophore",                                                    ifelse(d$Gene=="entA", "Siderophore",
+        ifelse(d$Gene=="pchB","Siderophore",
+           ifelse(d$Gene=="bglX","C decomposition",
+              ifelse(d$Gene=="bglB","C decomposition",
+                 ifelse(d$Gene=="E3.2.1.21","C decomposition",                                          ifelse(d$Gene=="amiE","N decomposition",    
+ifelse(d$Gene=="ureC","N decomposition",                                                    ifelse(d$Gene=="pqqC", "PO4 solubility",
+        ifelse(d$Gene=="phoA","P decomposition",
+           ifelse(d$Gene=="phoD","P decomposition",
+              ifelse(d$Gene=="PHO","P decomposition",
+                 ifelse(d$Gene=="appA","P decomposition",                                          ifelse(d$Gene=="phoN","P decomposition",                             ifelse(d$Gene=="aslA","S decomposition",                                                    ifelse(d$Gene=="nifH", "N-fixation",
+        ifelse(d$Gene=="nifD","N-fixation",
+           ifelse(d$Gene=="nifK","N-fixation",
+              ifelse(d$Gene=="pmoA-amoA","Nitrification",
+                 ifelse(d$Gene=="hao","Nitrification",                                          ifelse(d$Gene=="nirB","Dissimilatory nitrate reduction",    
+ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                                   ifelse(d$Gene=="nrfA", "Dissimilatory nitrate reduction",
+        ifelse(d$Gene=="nirA","Assimilatory nitrate reduction",
+           ifelse(d$Gene=="NIT-6","Assimilatory nitrate reduction",
+              ifelse(d$Gene=="narG","Denitrification",
+                 ifelse(d$Gene=="narH","Denitrification",                                          ifelse(d$Gene=="nirK","Denitrification",    
+ ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
+        ifelse(d$Gene=="norC","Denitrification",
+          ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
+#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
+d.sum <- summarize(group_by(d, Species, enrich_group, Fertilization, Domestication, Gene, Contrast,Function),
+                   n=(n), mean = mean(ef_logFC)) %>% 
+  filter(., Function != 'Assimilatory nitrate reduction') %>% 
+  filter(., Function != 'Dissimilatory nitrate reduction') %>% 
+  filter(., Function != 'Denitrification')
+
+d.sum <- d.sum %>%
+mutate(Function = as_factor(Function)) %>%
+mutate(Function = fct_relevel(Function,  "Biocontrol", "Stress","S decomposition", "C decomposition","N-fixation", "N decomposition", "Nitrification", "Siderophore", "P decomposition", "PO4 solubility")) %>% 
+  mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group,  "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower")) %>% 
+   mutate(Contrast = as_factor(Contrast)) %>%
+mutate(Contrast = fct_relevel(Contrast,  "Seedling-Early_Vegetative", "Early_Vegetative-Late_Vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
+table(d.sum$Function)
+
+p<-ggplot(d.sum, aes(x=interaction(Contrast,enrich_group), y=(Function), color=Gene)) + 
+  geom_vline(xintercept = 1.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 2.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 3.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 4.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 5.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 6.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 7.5, color = "gray90", linewidth = 0.25)+
+  geom_beeswarm(size=4, alpha = 0.5, cex=1) +
+   scale_color_manual(values = c("#EA4691", "#6BFF33", "#2929F0", #acds, amie, appa
+                                 "#BFE75D", "#F9FF76", "#A3A92D", #asla, bglb, bglx
+                                 "#7667A0", "#3F2B78" ,"#26194C", #buda, budx, e32114
+                                 "#6A6F07", "#800080", "#610185", #e32121, e3216, enta
+                                 "#A2CACB", "#A0008D", "#661AFF", #fena, hao, hcna
+                                 "#662341", "#8942DE", "#402B47", #ipdc, itua, mbti
+                                 "#1BB74B", "#39FDA4", "#145437", #nifd, mifh, nifk
+                                 "#A774B8", "#CAB2D6", "#3AF6FC", #pchb, phld, pho
+                                 "#239A9E", "#156062", "#A2CACB",  #phoa, phod, phon
+                                 "#40008C", "#E75DD6", "#38A2B9", #phze, pmoaamoa, pqqc
+                                 "#C3AAE1", "#9145E8", "#38871A"))+ #rifm, srfaa, urec
+  facet_wrap(Domestication ~ Fertilization, scales = 'free') + 
+  theme_classic()+
+  theme(axis.line = element_line(colour = "black"),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = element_blank(),
+        legend.key = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+ggsave(plot = p, "output/diffabund_MU.png", width =15, height = 7)
+```
+
+## FW
+```{r}
+dflist <- d.fw$feature
+keggsub <- filter(kegg, Species %in% dflist)
+names(d.fw)[names(d.fw) == 'feature'] <- 'Species'
+df.kegg <- left_join(d.fw,keggsub, by = 'Species')
+
+d<- pivot_longer(df.kegg, cols=hcnA:nosZ, names_to = 'Gene', values_to = 'value') %>%   filter(!value==0)
+
+
+d$Function <- ifelse(d$Gene=="hcnA", "Biocontrol",
+                        ifelse(d$Gene=="budA","Biocontrol",
+                               ifelse(d$Gene=="budC","Biocontrol",
+                                      ifelse(d$Gene=="E3.2.1.6","Biocontrol",                                             ifelse(d$Gene=="E3.2.1.14","Biocontrol",                                                    ifelse(d$Gene=="phlD","Biocontrol",                                                       ifelse(d$Gene=="ituA","Biocontrol",  
+                      ifelse(d$Gene=="fenA", "Biocontrol",
+                        ifelse(d$Gene=="srfAA","Biocontrol",
+                               ifelse(d$Gene=="rifM","Biocontrol",
+                                      ifelse(d$Gene=="phzE","Biocontrol",
+                                             ifelse(d$Gene=="ipdC","Stress",                                                    ifelse(d$Gene=="acdS","Stress",                                                           ifelse(d$Gene=="mbtI","Siderophore",                                                    ifelse(d$Gene=="entA", "Siderophore",
+        ifelse(d$Gene=="pchB","Siderophore",
+           ifelse(d$Gene=="bglX","C decomposition",
+              ifelse(d$Gene=="bglB","C decomposition",
+                 ifelse(d$Gene=="E3.2.1.21","C decomposition",                                          ifelse(d$Gene=="amiE","N decomposition",    
+ifelse(d$Gene=="ureC","N decomposition",                                                    ifelse(d$Gene=="pqqC", "PO4 solubility",
+        ifelse(d$Gene=="phoA","P decomposition",
+           ifelse(d$Gene=="phoD","P decomposition",
+              ifelse(d$Gene=="PHO","P decomposition",
+                 ifelse(d$Gene=="appA","P decomposition",                                          ifelse(d$Gene=="phoN","P decomposition",                             ifelse(d$Gene=="aslA","S decomposition",                                                    ifelse(d$Gene=="nifH", "N-fixation",
+        ifelse(d$Gene=="nifD","N-fixation",
+           ifelse(d$Gene=="nifK","N-fixation",
+              ifelse(d$Gene=="pmoA-amoA","Nitrification",
+                 ifelse(d$Gene=="hao","Nitrification",                                          ifelse(d$Gene=="nirB","Dissimilatory nitrate reduction",    
+ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                                   ifelse(d$Gene=="nrfA", "Dissimilatory nitrate reduction",
+        ifelse(d$Gene=="nirA","Assimilatory nitrate reduction",
+           ifelse(d$Gene=="NIT-6","Assimilatory nitrate reduction",
+              ifelse(d$Gene=="narG","Denitrification",
+                 ifelse(d$Gene=="narH","Denitrification",                                          ifelse(d$Gene=="nirK","Denitrification",    
+ ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
+        ifelse(d$Gene=="norC","Denitrification",
+          ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
+#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
+d.sum <- summarize(group_by(d, Species, enrich_group, Fertilization, Domestication, Gene, Contrast,Function),
+                   n=(n), mean = mean(ef_logFC)) %>% 
+  filter(., Function != 'Assimilatory nitrate reduction') %>% 
+  filter(., Function != 'Dissimilatory nitrate reduction') %>% 
+  filter(., Function != 'Denitrification')
+
+d.sum <- d.sum %>%
+mutate(Function = as_factor(Function)) %>%
+mutate(Function = fct_relevel(Function,  "Biocontrol", "Stress","S decomposition", "C decomposition","N-fixation", "N decomposition", "Nitrification", "Siderophore", "P decomposition", "PO4 solubility")) %>% 
+  mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group,  "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower")) %>% 
+   mutate(Contrast = as_factor(Contrast)) %>%
+mutate(Contrast = fct_relevel(Contrast,  "Seedling-Early_Vegetative", "Early_Vegetative-Late_Vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
+table(d.sum$Function)
+
+p<-ggplot(d.sum, aes(x=interaction(Contrast,enrich_group), y=(Function), color=Gene)) + 
+  geom_vline(xintercept = 1.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 2.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 3.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 4.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 5.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 6.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 7.5, color = "gray90", linewidth = 0.25)+
+  geom_beeswarm(size=4, alpha = 0.5, cex=1) +
+   scale_color_manual(values = c("#EA4691", "#6BFF33", "#2929F0", #acds, amie, appa
+                                 "#BFE75D", "#F9FF76", "#A3A92D", #asla, bglb, bglx
+                                 "#7667A0", "#3F2B78" ,"#26194C", #buda, budx, e32114
+                                 "#6A6F07", "#800080", "#610185", #e32121, e3216, enta
+                                 "#A2CACB", "#A0008D", "#661AFF", #fena, hao, hcna
+                                 "#662341", "#8942DE", "#402B47", #ipdc, itua, mbti
+                                 "#1BB74B", "#39FDA4", "#145437", #nifd, mifh, nifk
+                                 "#A774B8", "#CAB2D6", "#3AF6FC", #pchb, phld, pho
+                                 "#239A9E", "#156062", "#A2CACB",  #phoa, phod, phon
+                                 "#40008C", "#E75DD6", "#38A2B9", #phze, pmoaamoa, pqqc
+                                 "#C3AAE1", "#9145E8", "#38871A"))+ #rifm, srfaa, urec
+  facet_wrap(Domestication ~ Fertilization, scales = 'free') + 
+  theme_classic()+
+  theme(axis.line = element_line(colour = "black"),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = element_blank(),
+        legend.key = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+```
+
+## FM
+```{r}
+dflist <- d.fm$feature
+keggsub <- filter(kegg, Species %in% dflist)
+names(d.fm)[names(d.fm) == 'feature'] <- 'Species'
+df.kegg <- left_join(d.fm,keggsub, by = 'Species')
+
+d<- pivot_longer(df.kegg, cols=hcnA:nosZ, names_to = 'Gene', values_to = 'value') %>%   filter(!value==0)
+
+
+d$Function <- ifelse(d$Gene=="hcnA", "Biocontrol",
+                        ifelse(d$Gene=="budA","Biocontrol",
+                               ifelse(d$Gene=="budC","Biocontrol",
+                                      ifelse(d$Gene=="E3.2.1.6","Biocontrol",                                             ifelse(d$Gene=="E3.2.1.14","Biocontrol",                                                    ifelse(d$Gene=="phlD","Biocontrol",                                                       ifelse(d$Gene=="ituA","Biocontrol",  
+                      ifelse(d$Gene=="fenA", "Biocontrol",
+                        ifelse(d$Gene=="srfAA","Biocontrol",
+                               ifelse(d$Gene=="rifM","Biocontrol",
+                                      ifelse(d$Gene=="phzE","Biocontrol",
+                                             ifelse(d$Gene=="ipdC","Stress",                                                    ifelse(d$Gene=="acdS","Stress",                                                           ifelse(d$Gene=="mbtI","Siderophore",                                                    ifelse(d$Gene=="entA", "Siderophore",
+        ifelse(d$Gene=="pchB","Siderophore",
+           ifelse(d$Gene=="bglX","C decomposition",
+              ifelse(d$Gene=="bglB","C decomposition",
+                 ifelse(d$Gene=="E3.2.1.21","C decomposition",                                          ifelse(d$Gene=="amiE","N decomposition",    
+ifelse(d$Gene=="ureC","N decomposition",                                                    ifelse(d$Gene=="pqqC", "PO4 solubility",
+        ifelse(d$Gene=="phoA","P decomposition",
+           ifelse(d$Gene=="phoD","P decomposition",
+              ifelse(d$Gene=="PHO","P decomposition",
+                 ifelse(d$Gene=="appA","P decomposition",                                          ifelse(d$Gene=="phoN","P decomposition",                             ifelse(d$Gene=="aslA","S decomposition",                                                    ifelse(d$Gene=="nifH", "N-fixation",
+        ifelse(d$Gene=="nifD","N-fixation",
+           ifelse(d$Gene=="nifK","N-fixation",
+              ifelse(d$Gene=="pmoA-amoA","Nitrification",
+                 ifelse(d$Gene=="hao","Nitrification",                                          ifelse(d$Gene=="nirB","Dissimilatory nitrate reduction",    
+ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                                   ifelse(d$Gene=="nrfA", "Dissimilatory nitrate reduction",
+        ifelse(d$Gene=="nirA","Assimilatory nitrate reduction",
+           ifelse(d$Gene=="NIT-6","Assimilatory nitrate reduction",
+              ifelse(d$Gene=="narG","Denitrification",
+                 ifelse(d$Gene=="narH","Denitrification",                                          ifelse(d$Gene=="nirK","Denitrification",    
+ ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
+        ifelse(d$Gene=="norC","Denitrification",
+          ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
+#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
+d.sum <- summarize(group_by(d, Species, enrich_group, Fertilization, Domestication, Gene, Contrast,Function),
+                   n=(n), mean = mean(ef_logFC)) %>% 
+  filter(., Function != 'Assimilatory nitrate reduction') %>% 
+  filter(., Function != 'Dissimilatory nitrate reduction') %>% 
+  filter(., Function != 'Denitrification')
+
+d.sum <- d.sum %>%
+mutate(Function = as_factor(Function)) %>%
+mutate(Function = fct_relevel(Function,  "Biocontrol", "Stress","S decomposition", "C decomposition","N-fixation", "N decomposition", "Nitrification", "Siderophore", "P decomposition", "PO4 solubility")) %>% 
+  mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group,  "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower")) %>% 
+   mutate(Contrast = as_factor(Contrast)) %>%
+mutate(Contrast = fct_relevel(Contrast,  "Seedling-Early_Vegetative", "Early_Vegetative-Late_Vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
+table(d.sum$Function)
+
+p<-ggplot(d.sum, aes(x=interaction(Contrast,enrich_group), y=(Function), color=Gene)) + 
+  geom_vline(xintercept = 1.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 2.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 3.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 4.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 5.5, color = "gray90", linewidth = 0.25)+
+  geom_vline(xintercept = 6.5, color = "gray40", linewidth = 0.25)+
+  geom_vline(xintercept = 7.5, color = "gray90", linewidth = 0.25)+
+  geom_beeswarm(size=4, alpha = 0.5, cex=1) +
+   scale_color_manual(values = c("#EA4691", "#6BFF33", "#2929F0", #acds, amie, appa
+                                 "#BFE75D", "#F9FF76", "#A3A92D", #asla, bglb, bglx
+                                 "#7667A0", "#3F2B78" ,"#26194C", #buda, budx, e32114
+                                 "#6A6F07", "#800080", "#610185", #e32121, e3216, enta
+                                 "#A2CACB", "#A0008D", "#661AFF", #fena, hao, hcna
+                                 "#662341", "#8942DE", "#402B47", #ipdc, itua, mbti
+                                 "#1BB74B", "#39FDA4", "#145437", #nifd, mifh, nifk
+                                 "#A774B8", "#CAB2D6", "#3AF6FC", #pchb, phld, pho
+                                 "#239A9E", "#156062", "#A2CACB",  #phoa, phod, phon
+                                 "#40008C", "#E75DD6", "#38A2B9", #phze, pmoaamoa, pqqc
+                                 "#C3AAE1", "#9145E8", "#38871A"))+ #rifm, srfaa, urec
+  facet_wrap(Domestication ~ Fertilization, scales = 'free') + 
+  theme_classic()+
+  theme(axis.line = element_line(colour = "black"),
+        axis.text.x = element_text(angle = 90),
+        axis.title.y = element_blank(),
+        legend.key = element_blank(),
+        legend.position = "none",
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+```
+
+
+# Old diff abund code 
+
+## Combine above data and get data ready to graph
+
+```{r}
+d <- rbind(d.uw, d.um, d.fw, d.fm)
+
+d <- d %>%
+mutate(Contrast = as_factor(Contrast)) %>%
+mutate(Contrast = fct_relevel(Contrast, "Seedling-Early_Vegetative", "Early_Vegetative-Late_vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
+table(d$Contrast)
+
+d <- d %>%
+mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+table(d$enrich_group)
+count.d <- summarize(group_by(d, Contrast, Domestication, Fertilization),)
+```
+
+## Diff abund plot
+```{r}
+p<-ggplot(d, aes(x=Contrast, y=(ef_logFC), color=enrich_group)) + 
+  geom_point(size=6.5, alpha = 0.4) +
+  geom_point(shape = 1,size = 6.5,colour = "black", alpha=0.4)+
+  geom_vline(xintercept = 1.5,color='gray80', linewidth = 0.25)+
+  geom_vline(xintercept = 2.5,color='gray80', linewidth = 0.25)+
+  geom_vline(xintercept = 3.5,color='gray80', linewidth = 0.25)+
+  scale_color_brewer(palette = 'Set1')+
+  labs(y='Log Fold Change')+
+  facet_grid(Domestication ~ Fertilization, scales = 'free') + 
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = -90, hjust =0, vjust=0.5),
+        axis.line = element_line(colour = "black"),
+        legend.key = element_blank(),
+        strip.text.y = element_text(size=8, face="bold"), 
+        panel.border = element_rect(color= "black", linewidth=0.25, fill = NA), 
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+```
+
+
+
+## S-EV v LV-Ef-Lf
+```{r}
+out.glom <- microbiomeMarker::run_deseq2(
+  uw, 
+  group="Groups",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+d.uw1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Wild") 
+
+out.glom <- microbiomeMarker::run_deseq2(
+  um, 
+  group="Groups",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+d.um1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Unfertilized") %>% 
+  mutate(., Domestication = "Modern") 
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fw, 
+  group="Groups",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+d.fw1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Wild") 
+
+out.glom <- microbiomeMarker::run_deseq2(
+  fm, 
+  group="Groups",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+d.fm1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Domestication = "Modern") 
+
+d.1235 <- rbind(d.uw1235, d.um1235, d.fw1235, d.fm1235)
+x = tapply(d.1235$ef_logFC, d.1235$feature, function(x) max(x))
+x = sort(x, TRUE)
+d.1235$feature = factor(as.character(d.1235$feature), levels=names(x))
+d.1235.count <- summarise(group_by(d.1235, enrich_group, Domestication, Fertilization), n=n())
+```
+
+```{r}
+p<-ggplot(d.1235, aes(x=enrich_group, y=(ef_logFC), color=enrich_group)) + 
+  geom_point(size=6.5, alpha = 0.4) +
+  geom_point(shape = 1,size = 6.5,colour = "black", alpha=0.4)+
+  scale_color_brewer(palette = 'Set1')+
+  labs(y='Log Fold Change')+
+  facet_wrap(Domestication ~ Fertilization, scales = 'free') + 
+  theme_classic()+
+  theme(axis.line = element_line(colour = "black"),
+        legend.key = element_blank(),
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.title = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
 ```
 
