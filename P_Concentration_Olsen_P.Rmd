@@ -2,9 +2,13 @@
 title: "P Concentration and Olsen P"
 author: "MD"
 date: "`r Sys.Date()`"
-output: html_document
-editor_options: 
-  chunk_output_type: console
+output: 
+ html_document:
+   toc: true
+   toc_float: true
+   editor_options:
+   chunck_output_type: console
+   chunk_output_type: console
 ---
 
 ```{r}
@@ -12,38 +16,38 @@ library(tidyverse)
 library(agricolae)
 library(emmeans)
 library(patchwork)
-
+library(agricolae)
+library(car)
 ```
 
 
 ```{r}
-d <- read.csv('Data/P_Concentration.csv') %>% 
-  filter(., Harvest != "Seedling")
+d <- read.csv('Data/P_Concentration_Blank_Seedling.csv') 
+
 
 d <- d %>%
 mutate(Harvest = as_factor(Harvest)) %>%
-mutate(Harvest = fct_relevel(Harvest, "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
 table(d$Harvest)
 
-d <- d %>%
-mutate(Fertilization = as_factor(Fertilization)) %>%
-mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized", "Fertilized"))
 
 head(d)
 par(mfrow=c(2,2))
 options(contrasts = c("contr.sum", "contr.poly"))
 ```
 
-# Concentration
+# Shoot Concentration
 
 ```{r}
 mod <- lm(log(P.ppm.) ~  Fertilization*Domestication*Harvest, data = d)
 
 plot(mod)
+t <- HSD.test(mod, "Fertilization");t
+t <- HSD.test(mod, "Domestication");t
+t <- HSD.test(mod, "Harvest");t
 
 
 summary(aov(mod))
-#Anova(mod, type = 3)
 emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
 
 emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
@@ -59,10 +63,20 @@ df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
 
 names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
+test <- read.csv("Data/dummy_test.csv")
+df.all <- rbind(df,test)
+df.all <- df.all %>%
+mutate(Harvest = as_factor(Harvest)) %>%
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
 ```
 
 ```{r}
-p_conc <- ggplot(aes(x=Harvest, y=response), data = df) +
+df.f <- filter(df.all, Fertilization == "Fertilized")
+df.u <- filter(df.all, Fertilization == "Unfertilized")
+```
+
+```{r}
+p_conc_u <- ggplot(aes(x=Harvest, y=response), data = df.u) +
   geom_line(aes(color=Domestication, group=Domestication),
             stat='summary',fun='mean',size=1) +
   geom_errorbar(width=0.25,alpha=0.5,
@@ -75,11 +89,33 @@ p_conc <- ggplot(aes(x=Harvest, y=response), data = df) +
   labs(y="Shoot Phosphorus Concentration (mg/kg)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
-        axis.text.x=element_text(angle = 90),
+        strip.text = element_blank(),
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p_conc
-#ggsave(plot=p, 'output/olsen_p.png', width = 12, height = 6)
+        axis.title.x = element_blank());p_conc_u
+#ggsave(plot=p_conc_u, '../../Manuscript/figs/R_output/p_conc_unfert.png', width = 8, height = 4)
 ```
+
+
+```{r}
+p_conc_f <- ggplot(aes(x=Harvest, y=response), data = df.f) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Shoot Phosphorus Concentration (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_conc_f
+#ggsave(plot=p_conc_u, '../../Manuscript/figs/R_output/p_conc_unfert.png', width = 8, height = 4)
+```
+
 
 # Uptake
 
@@ -87,10 +123,12 @@ p_conc <- ggplot(aes(x=Harvest, y=response), data = df) +
 mod <- lm(log(P_content) ~  Fertilization*Domestication*Harvest, data = d)
 
 plot(mod)
-
+t <- HSD.test(mod, "Fertilization");t
+t <- HSD.test(mod, "Domestication");t
+t <- HSD.test(mod, "Harvest");t
 
 summary(aov(mod))
-#Anova(mod, type = 3)
+
 emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
 
 emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
@@ -106,10 +144,42 @@ df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
 
 names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
+
+test <- read.csv("Data/dummy_test.csv")
+df.all <- rbind(df,test)
+df.all <- df.all %>%
+  mutate(Harvest = as_factor(Harvest)) %>%
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
 ```
 
 ```{r}
-p_up <- ggplot(aes(x=Harvest, y=response), data = df) +
+df.puf <- filter(df.all, Fertilization == "Fertilized")
+df.puu <- filter(df.all, Fertilization == "Unfertilized")
+```
+
+```{r}
+p_up_u <- ggplot(aes(x=Harvest, y=response), data = df.puu) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Shoot Phosphorus Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_up_u
+#ggsave(plot=p_up_u, '../../Manuscript/figs/R_output/p_uptake_unfert.png', width = 8, height = 4)
+```
+
+
+```{r}
+p_up_f <- ggplot(aes(x=Harvest, y=response), data = df.puf) +
   geom_line(aes(color=Domestication, group=Domestication),
             stat='summary',fun='mean',size=1) +
   geom_errorbar(width=0.25,alpha=0.5,
@@ -122,10 +192,279 @@ p_up <- ggplot(aes(x=Harvest, y=response), data = df) +
   labs(y="Shoot Phosphorus Uptake (mg)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
-        axis.text.x=element_text(angle = 90),
+        strip.text = element_blank(),
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p_up
-#ggsave(plot=p, 'output/olsen_p.png', width = 12, height = 6)
+        axis.title.x = element_blank());p_up_f
+#ggsave(plot=p_up_u, '../../Manuscript/figs/R_output/p_uptake_unfert.png', width = 8, height = 4)
+```
+
+
+# Root Concentration
+
+
+```{r}
+root <- read.csv("Data/Root_P.csv")
+mod <- lm(log(P_mg_kg) ~  Fertilization*Domestication*Harvest, data = root)
+
+plot(mod)
+summary(aov(mod))
+t <- HSD.test(mod, "Fertilization");t
+t <- HSD.test(mod, "Domestication");t
+t <- HSD.test(mod, "Harvest");t
+
+
+emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
+
+emmeans(mod, ~ Fertilization*Domestication, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Harvest), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication,Harvest, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+test <- read.csv("Data/dummy_test.csv")
+df.all <- rbind(df,test)
+df.all <- df.all %>%
+mutate(Harvest = as_factor(Harvest)) %>%
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+```
+
+```{r}
+df.f <- filter(df.all, Fertilization == "Fertilized")
+df.u <- filter(df.all, Fertilization == "Unfertilized")
+```
+
+```{r}
+p_conc_root_u <- ggplot(aes(x=Harvest, y=response), data = df.u) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Root Phosphorus Concentration (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_conc_root_u
+#ggsave(plot=p_conc_root_u, '../../Manuscript/figs/R_output/root_p_conc_unfert.png', width = 8, height = 4)
+```
+
+
+```{r}
+p_conc_root_f <- ggplot(aes(x=Harvest, y=response), data = df.f) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Root Phosphorus Concentration (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_conc_root_f
+#ggsave(plot=p_conc_root_u, '../../Manuscript/figs/R_output/root_p_conc_unfert.png', width = 8, height = 4)
+```
+
+# Root uptake
+
+```{r}
+mod <- lm(log(Root_Uptake) ~  Fertilization*Domestication*Harvest, data = root)
+
+plot(mod)
+t <- HSD.test(mod, "Fertilization");t
+t <- HSD.test(mod, "Domestication");t
+t <- HSD.test(mod, "Harvest");t
+
+summary(aov(mod))
+
+emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
+
+emmeans(mod, ~ Fertilization*Domestication, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Harvest), adjust = "fdr")
+plot(res[[1]], horizontal=F)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication,Harvest, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+
+test <- read.csv("Data/dummy_test.csv")
+df.all <- rbind(df,test)
+df.all <- df.all %>%
+  mutate(Harvest = as_factor(Harvest)) %>%
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+```
+
+```{r}
+df.puf <- filter(df.all, Fertilization == "Fertilized")
+df.puu <- filter(df.all, Fertilization == "Unfertilized")
+```
+
+```{r}
+p_rootup_u <- ggplot(aes(x=Harvest, y=response), data = df.puu) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Root Phosphorus Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_rootup_u
+#ggsave(plot=p_rootup_f, '../../Manuscript/figs/R_output/root_p_uptake.png', width = 8, height = 4)
+```
+
+
+```{r}
+p_rootup_f <- ggplot(aes(x=Harvest, y=response), data = df.puf) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Root Phosphorus Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_rootup_f
+#ggsave(plot=p_rootup_f, '../../Manuscript/figs/R_output/root_p_uptake.png', width = 8, height = 4)
+```
+
+# total uptake
+
+```{r}
+mod <- lm(log(Total_P) ~  Fertilization*Domestication*Harvest, data = root)
+
+plot(mod)
+t <- HSD.test(mod, "Fertilization");t
+t <- HSD.test(mod, "Domestication");t
+t <- HSD.test(mod, "Harvest");t
+
+summary(aov(mod))
+
+emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
+
+emmeans(mod, ~ Fertilization*Domestication, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Harvest), adjust = "fdr")
+plot(res[[1]], horizontal=F)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication,Harvest, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+
+test <- read.csv("Data/dummy_test.csv")
+df.all <- rbind(df,test)
+df.all <- df.all %>%
+  mutate(Harvest = as_factor(Harvest)) %>%
+mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+```
+
+```{r}
+df.puf <- filter(df.all, Fertilization == "Fertilized")
+df.puu <- filter(df.all, Fertilization == "Unfertilized")
+```
+
+```{r}
+p_totalup_u <- ggplot(aes(x=Harvest, y=response), data = df.puu) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Total Phosphorus Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_totalup_u
+#ggsave(plot=p_totalup_u, '../../Manuscript/figs/R_output/total_p_uptake_unfert.png', width = 8, height = 4)
+```
+
+
+```{r}
+p_totalup_f <- ggplot(aes(x=Harvest, y=response), data = df.puf) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Total Phosphorus Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_totalup_f
+#ggsave(plot=p_totalup_u, '../../Manuscript/figs/R_output/total_p_uptake_unfert.png', width = 8, height = 4)
+```
+
+IMPORTANT: Generate biomass graphs FIRST. Must run the biomass RMD first before this code chunk.
+```{r}
+p_shoot_f
+p_root_f
+p_conc_f
+p_conc_root_f
+
+p_all <- (p_shoot_f+p_root_f)/ (p_conc_f+p_conc_root_f) + plot_layout(axes = "collect") +plot_layout(guides = "collect");p_all
+#ggsave(plot=p_all, '../../Manuscript/figs/R_output/shoot_root_P_conc.png', width = 12, height =6)
+
+p_shoot_u
+p_root_u
+p_conc_u
+p_conc_root_u
+p_up_f
+p_up_u
+
+p_figs1 <- (p_shoot_u+p_root_u)/ (p_rshoot+p_rroot) + plot_layout(axes = "collect") + plot_layout(guides = "collect");p_figs1
+#ggsave(plot=p_figs1, '../../Manuscript/figs/R_output/s1_bio.png', width = 12, height =6)
+p_figs2 <- (p_conc_u+p_conc_root_u) / (p_up_f+p_up_u) / (p_rootup_f+p_rootup_u) / (p_totalup_f+p_totalup_u)+ plot_layout(axes = "collect") + plot_layout(guides = "collect");p_figs2
+#ggsave(plot=p_figs2, '../../Manuscript/figs/R_output/s1_p_conc_uptake.png', width = 12, height =12)
+
 ```
 
 # Olsen P
@@ -143,25 +482,25 @@ mutate(Fertilization = as_factor(Fertilization)) %>%
 mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized", "Fertilized"))
 
 head(d)
-par(mfrow=c(2,2))
-options(contrasts = c("contr.sum", "contr.poly"))
 
 ```
 
 
 
 ```{r}
-d <- d[-111,]
 
-d <- d[-9,]
 mod <- lm(sqrt(mg.kg) ~  Fertilization*Domestication*Harvest, 
            data = d)
-
 plot(mod)
+
+t <- HSD.test(mod, "Fertilization");t
+t <- HSD.test(mod, "Domestication");t
+t <- HSD.test(mod, "Harvest");t
+
+
 
 
 summary(aov(mod))
-#Anova(mod, type = 3)
 emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
 
 emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
@@ -181,517 +520,47 @@ df$letters <- gsub(' ','',df$letters)
 
 ### Data visualization
 ```{r}
-p_op <- ggplot(aes(x=Harvest, y=response), data = df) +
+df.opf <- filter(df, Fertilization == "Fertilized")
+df.opu <- filter(df, Fertilization == "Unfertilized")
+```
+
+```{r}
+p_ol_u <- ggplot(aes(x=Harvest, y=response), data = df.opu) +
   geom_line(aes(color=Domestication, group=Domestication),
             stat='summary',fun='mean',size=1) +
   geom_errorbar(width=0.25,alpha=0.5,
-                aes(ymin = lower.CL, ymax = upper.CL, 
-                    group=Domestication,color=Domestication))+
+                aes(ymin = lower.CL, ymax = upper.CL, group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  theme_classic()+
+  labs(y="Olsen Phosphorus (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_ol_u
+#ggsave(plot=p_ol_u, '../../Manuscript/figs/R_output/p_olsen_unfert.png', width = 8, height =4)
+
+```
+
+
+```{r}
+p_ol_f <- ggplot(aes(x=Harvest, y=response), data = df.opf) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',size=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, group=Domestication,color=Domestication))+
   scale_color_manual(values = c('darkblue','darkorange2'))+
   geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
-  facet_wrap(~Fertilization, ncol=2)+
   theme_classic()+
-  labs(y="Olsen Phosphorus Concentration (mg/kg)")+
+  labs(y="Olsen Phosphorus (mg/kg)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
+        strip.text = element_blank(),
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p_op
-#ggsave(plot=p, 'output/olsen_p.png', width = 12, height = 6)
-```
-
-
-```{r}
-(p_conc+p_up)/p_op  + plot_layout(guides = "collect")
-```
-
-
-
-
-
-
-
-
-
-
-```{r}
-d.sub <- filter(d, Harvest != 'Early_Veg')
-mod <- lm((P.ppm.) ~  Harvest*Fertilization*Domestication, data=d.sub)
-par(mfrow=c(2,2))
-plot(mod)
-summary(mod)
-co <- mod$coefficients
-
-level_order <- factor(d.sub$Harvest, levels = c('Late_Veg','Early_Flower',"Late_Flower","Fruit"))
-p <- ggplot(aes(group=Fertilization,x=level_order, y=(P.ppm.)), data = d.sub) +
-  geom_hline(yintercept = 0,color='gray50')+
-  geom_line(stat='summary',fun='mean',color='black',size=1) +
-  geom_smooth(aes(fill=Fertilization, color=Fertilization))+
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  scale_color_manual(values = c('#3498db','#f39c12'))+
-  facet_wrap(~Domestication, ncol=2)+
-  theme_classic()+
-  labs(y="Log-Transformed Root Biomass")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
-
-p <- ggplot(aes(group=Domestication,x=level_order, y=(P.ppm.)), data = d.sub) +
-  geom_hline(yintercept = 0,color='gray50')+
-  geom_line(stat='summary',fun='mean',color='black',size=1) +
-  geom_smooth(aes(fill=Domestication, color=Domestication))+
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  scale_color_manual(values = c('#3498db','#f39c12'))+
-  facet_wrap(~Fertilization, ncol=2)+
-  theme_classic()+
-  labs(y="Log-Transformed Root Biomass")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
+        axis.title.x = element_blank());p_ol_f
+#ggsave(plot=p_ol_u, '../../Manuscript/figs/R_output/p_olsen_unfert.png', width = 8, height =4)
 
 ```
 
-```{r}
-
-#t2
-mod <- lm((P.ppm.) ~  Domestication*Fertilization, data=t2)
-par(mfrow=c(2,2))
-plot(mod)
-aov.mod <- aov(mod)
-summary(aov.mod)
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-res
-plot(res[[1]], horizontal=F)
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t2, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P.ppm.)),
-  sd = sd((P.ppm.)),
-  se = sd/sqrt(n))  %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p2<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot P (mg/kg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Late Vegetative')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p2
-# t3
-mod <- lm((P.ppm.) ~  Domestication*Fertilization, data=t3)
-par(mfrow=c(2,2))
-plot(mod)
-aov.mod <- aov(mod)
-summary(aov.mod)
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t3, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P.ppm.)),
-  sd = sd((P.ppm.)),
-  se = sd/sqrt(n)) %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p3<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot Phosphorus Concentration (mg/kg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Early Flower')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank());p3
-
-# t4
-mod <- lm((P.ppm.) ~  Domestication*Fertilization, data=t4)
-par(mfrow=c(2,2))
-plot(mod)
-
-aov.mod <- aov(mod)
-summary(aov.mod)
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t4, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P.ppm.)),
-  sd = sd((P.ppm.)),
-  se = sd/sqrt(n))   %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p4<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot Phosphorus Concentration (mg/kg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Late Flower')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p4
-
-# t5
-mod <- lm((P.ppm.) ~  Domestication*Fertilization, data=t5)
-par(mfrow=c(2,2))
-plot(mod)
-
-aov.mod <- aov(mod)
-summary(aov.mod)
-
-t<-HSD.test(mod, "Domestication");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t5, Domestication,Fertilization),
-  n = n(),
-  mean = mean((mg.kg)),
-  sd = sd((mg.kg)),
-  se = sd/sqrt(n))   %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p5<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot P Concentration (mg/kg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Fruit')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p5
-ggarrange(p2, p3, p4, p5, ncol=2, nrow=2, common.legend = TRUE, legend="none")
-```
-
-# P content
-```{r}
-d.sub <- filter(d, Harvest != 'Early_Veg')
-mod <- lm(log(P_content) ~  Harvest*Fertilization*Domestication, data=d.sub)
-par(mfrow=c(2,2))
-plot(mod)
-summary(mod)
-co <- mod$coefficients
-
-level_order <- factor(d.sub$Harvest, levels = c('Late_Veg','Early_Flower',"Late_Flower","Fruit"))
-p <- ggplot(aes(group=Fertilization,x=level_order, y=(P_content)), data = d.sub) +
-  geom_hline(yintercept = 0,color='gray50')+
-  geom_line(stat='summary',fun='mean',color='black',size=1) +
-  geom_smooth(aes(fill=Fertilization, color=Fertilization))+
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  scale_color_manual(values = c('#3498db','#f39c12'))+
-  facet_wrap(~Domestication, ncol=2)+
-  theme_classic()+
-  labs(y="Log-Transformed Shoot Phosphorus Content (mg)")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
-
-p <- ggplot(aes(group=Domestication,x=level_order, y=(P.ppm.)), data = d.sub) +
-  geom_hline(yintercept = 0,color='gray50')+
-  geom_line(stat='summary',fun='mean',color='black',size=1) +
-  geom_smooth(aes(fill=Domestication, color=Domestication))+
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  scale_color_manual(values = c('#3498db','#f39c12'))+
-  facet_wrap(~Fertilization, ncol=2)+
-  theme_classic()+
-  labs(y="Log-Transformed Shoot Phosphorus Content (mg)")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p
-
-```
-
-```{r}
-
-#t2
-mod <- lm((P_content) ~  Domestication*Fertilization, data=t2)
-par(mfrow=c(2,2))
-plot(mod)
-aov.mod <- aov(mod)
-summary(aov.mod)
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-res
-plot(res[[1]], horizontal=F)
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t2, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P_content)),
-  sd = sd((P_content)),
-  se = sd/sqrt(n))  %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p2<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot P (mg/kg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Late Vegetative')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p2
-# t3
-mod <- lm((P_content) ~  Domestication*Fertilization, data=t3)
-par(mfrow=c(2,2))
-plot(mod)
-aov.mod <- aov(mod)
-summary(aov.mod)
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t3, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P_content)),
-  sd = sd((P_content)),
-  se = sd/sqrt(n)) %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p3<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot Phosphorus Concentration (mg/kg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Early Flower')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank());p3
-
-# t4
-mod <- lm((P_content) ~  Domestication*Fertilization, data=t4)
-par(mfrow=c(2,2))
-plot(mod)
-
-aov.mod <- aov(mod)
-summary(aov.mod)
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t4, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P_content)),
-  sd = sd((P_content)),
-  se = sd/sqrt(n))   %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p4<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot Phosphorus Content (mg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Late Flower')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p4
-
-# t5
-mod <- lm((P_content) ~  Domestication*Fertilization, data=t5)
-par(mfrow=c(2,2))
-plot(mod)
-
-aov.mod <- aov(mod)
-summary(aov.mod)
-
-t<-HSD.test(mod, "Domestication");t
-t<-HSD.test(mod, "Fertilization");t
-res <- emmeans(mod, list(pairwise ~ Domestication*Fertilization), adjust = "fdr")
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T))
-groups <- groups %>%
-  arrange(Fertilization, Domestication)
-
-sum_shoot <-summarise(group_by(t5, Domestication,Fertilization),
-  n = n(),
-  mean = mean((P_content)),
-  sd = sd((P_content)),
-  se = sd/sqrt(n))   %>% 
-  left_join(.,groups, by = c('Fertilization', 'Domestication'))
-sum_shoot$.group <- gsub(' ','',sum_shoot$.group)
-names(sum_shoot)[names(sum_shoot) == '.group'] <- 'letters'
-
-p5<-ggplot(sum_shoot, aes(Domestication, mean, fill = Fertilization)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Shoot P Content (mg)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Fruit')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p5
-ggarrange(p2, p3, p4, p5, ncol=2, nrow=2, common.legend = TRUE, legend="none")
-```
-
-# Percent change
-```{r}
-df <- read.csv('Data/P_Concentration_Percent_Change.csv')
-
-t2 <- filter(df, Harvest == 'Late_Veg')
-t3 <- filter(df, Harvest == 'Early_Flower')
-t4 <- filter(df, Harvest == 'Late_Flower')
-t5 <- filter(df, Harvest == 'Fruit')
-
-#t3
-mod <- lm((pchange) ~  Domestication, data=t3)
-par(mfrow=c(2,2))
-plot(mod)
-
-aov.mod <- aov(mod)
-summary(aov.mod)
-
-t<-HSD.test(mod, "Domestication");t
-sum_shoot <-summarise(group_by(t4, Domestication,Fertilization),
-  n = n(),
-  mean = mean((pchange)),
-  sd = sd((pchange)),
-  se = sd/sqrt(n))  
-sum_shoot$letters <- c('a','b')
-
-p7<-ggplot(sum_shoot, aes(Domestication, mean, fill = Domestication)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Percent Change (%)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Late Flower')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p7
-
-#t5
-mod <- lm((pchange) ~  Domestication, data=t5)
-par(mfrow=c(2,2))
-plot(mod)
-
-aov.mod <- aov(mod)
-summary(aov.mod)
-
-t<-HSD.test(mod, "Domestication");t
-sum_shoot <-summarise(group_by(t5, Domestication,Fertilization),
-  n = n(),
-  mean = mean((pchange)),
-  sd = sd((pchange)),
-  se = sd/sqrt(n))  
-sum_shoot$letters <- c('a','a')
-
-p8<-ggplot(sum_shoot, aes(Domestication, mean, fill = Domestication)) +
-  geom_col(position = 'dodge') +
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -.5, hjust = -0.2) +
-  scale_fill_manual(values = c('#3498db','#f39c12'))+
-  labs(y='Percent Change (%)')+
-  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
-  ggtitle(label = 'Early Flower')+
-  theme(axis.text=element_text(size=14, colour = "black"), 
-        axis.title=element_text(size=12,face="bold"),
-        axis.line = element_line(colour = "black"),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.background = element_blank(),
-        axis.title.x = element_blank(),
-       legend.position = 'none');p8
-```
 
