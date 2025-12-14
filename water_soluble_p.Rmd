@@ -1,0 +1,152 @@
+---
+title: "Water Soluble P"
+author: "MD"
+date: "`r Sys.Date()`"
+output: 
+ html_document:
+   toc: true
+   toc_float: true
+   toc_level: 3
+   editor_options:
+     chunk_output_type: console
+---
+
+
+```{r, include = F}
+library(tidyverse)
+library(car)
+library(emmeans)
+library(agricolae)
+```
+
+# Read in data 
+
+Here, I read in the data and coerce the factors to be in an established order (as opposed to alphabetical). 
+
+```{r read in data, results='hide'}
+d <- read.csv("Water_Soluble_P2025.csv") %>% 
+  filter(., !is.na(Water_Soluble_P..mg.kg.))
+d <- d %>%
+mutate(Fertilization = as_factor(Fertilization)) %>%
+mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized", "Fertilized"))
+table(d$Fertilization)
+
+d <- d %>%
+mutate(Harvest_Stage = as_factor(Harvest_Stage)) %>%
+mutate(Harvest_Stage = fct_relevel(Harvest_Stage, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
+table(d$Harvest_Stage)
+
+options(contrasts = c("contr.sum", "contr.poly"))
+par(mfrow=c(2,2))
+
+```
+
+# Model fitting
+
+## Untransformed data
+
+First, I ran the linear model using untransformed data. You will notice in the first diagnostic plot that there is clear heteroscedasticity. The QQ plot also shows fairly unnormalized residuals.
+
+```{r, no transform model}
+mod <- lm((Water_Soluble_P..mg.kg.) ~  Fertilization*Domestication*Harvest_Stage, 
+           data = d)
+plot(mod) 
+```
+
+## Log-transformed model
+
+Now, I log transform the data and produce homoscedasticity (as shown in diagnostic plot 1) and more normal residuals (plot 2). We can proceed with analysis using this log-transformed model.
+
+```{r, log transform}
+mod <- lm(log(Water_Soluble_P..mg.kg.) ~  Domestication*Harvest_Stage*Fertilization, 
+           data = d)
+plot(mod)
+```
+
+## ANOVA
+
+```{r, ANVOA}
+Anova(mod, type = 3)
+```
+We can see from the ANOVA table that we have a significant main effect of fertilization and the domestication. We do not have a main effect of stage of harvest
+
+We also see strong interactive effects occurring. 
+
+### Main effect examinination
+
+We can first examine the main effects:
+
+```{r, main effect F}
+t<-HSD.test(mod, "Fertilization");t
+```
+Fertilized soils have greater water soluble P than unfertilized.
+
+
+```{r, main effect d}
+t<-HSD.test(mod, "Domestication");t
+```
+Modern tomato has greater water soluble P than wild.
+
+### Interactive effects
+
+To examine interactive effects, I like to first look at an estimated marginal means plot. This plot gives us an idea of what patterns are occurring. The results are back-transformed. This allow us to appropriately test the model (that was log transformed) but generate a graph that is more intuitive to read (not log transformed) 
+
+
+```{r, emmip}
+p <- emmip(mod, Domestication ~ Harvest_Stage | Fertilization, CIs = TRUE, type = "response");p
+```
+
+From this graph, it seems like tentatively, fertilized wild in the second and fourth stages show greater water soluble P. It also looks like there is one stage in unfertilized where there may be no difference. 
+
+
+This below code tells me where to put the stars to indicate what pairs are significant. The output is long, so I will only list the code here. The results from this line of code indicate that at Early_Flower and Early_Vegetative in the P+ condition, Wild > Modern. Also in P-, every stage is significantly different. 
+
+```{r, pairwise contrasts, results='hide'}
+emmeans(mod, pairwise ~ Domestication|Harvest_Stage|Fertilization)
+```
+
+Now, we create our dataframe with the back-transformed data and the letters denoting differences
+
+
+```{r}
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest_Stage, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Harvest_Stage), adjust = "fdr")
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication, Harvest_Stage, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest_Stage'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+```
+
+
+# Visualization
+
+Now, we can visualize our results. Here is a line graph showing the P+ and P- conditions. 
+
+```{r}
+
+df.f <- filter(df, Fertilization == "Fertilized")
+df.u <- filter(df, Fertilization == "Unfertilized")
+
+p_wsp <- ggplot(aes(x=Harvest_Stage, y=response), data = df.f) +
+  geom_line(aes(color=Domestication, group=Domestication),
+            stat='summary',fun='mean',linewidth=1) +
+  geom_errorbar(width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL, 
+                    group=Domestication,color=Domestication))+
+  scale_color_manual(values = c('darkblue','darkorange2'))+
+ geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+  facet_wrap(~Fertilization, ncol=2)+
+  theme_classic()+
+  labs(y="Water Soluble Phosphorus (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        strip.text = element_blank(),
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_wsp
+#ggsave(plot=p_wsp_u, '../../Manuscript/figs/R_output/p_wsp_unfert.png', width = 8, height = 4)
+
+```
+
