@@ -1,0 +1,166 @@
+---
+title: "LC_MS"
+author: "MD"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(patchwork)
+```
+
+# RP Positive
+
+```{r}
+d <- read.csv("Data/lcms_61157_tomato_results_rp_pos.csv")
+d$colors <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=="0", "NS",
+                        ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1',"Modern",
+                               ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='-1','Wild',NA)))
+
+d <- d %>%
+mutate(colors = as_factor(colors)) %>%
+mutate(colors = fct_relevel(colors, "Wild", "Modern", "NS"))
+table(d$colors)
+
+d$labels <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1', d$Name, ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato == '-1', d$Name, NA))
+
+p_rppos<-ggplot(data=d)+
+  geom_point(alpha=0.85,mapping= aes(
+    fill=colors, x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato)),
+    size=5,color='black',pch=21) +
+  scale_fill_manual(values = c('darkorange','darkblue','gray50'))+
+  theme_classic()+
+#   geom_text(aes(label=labels,x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato), vjust=-0.1, hjust = -0.1))+
+  labs(y=expression("-log"["e"] ~ "p" ["adj"]), 
+       x=expression("log"["2"]~"Fold Change"))+
+  theme(axis.text=element_text(size=10, colour = "black"), 
+        axis.line = element_line(colour = "black"),
+        legend.position='none');p_rppos
+```
+
+# RP Neg
+
+```{r}
+d <- read.csv("Data/lcms_61157_tomato_results_rp_neg.csv")
+d$colors <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=="0", "NS",
+                        ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1',"Modern",
+                               ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='-1','Wild',NA)))
+
+d <- d %>%
+mutate(colors = as_factor(colors)) %>%
+mutate(colors = fct_relevel(colors, "Wild", "Modern", "NS"))
+table(d$colors)
+
+d$labels <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1', d$Name, ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato == '-1', d$Name, NA))
+
+p_rpneg<-ggplot(data=d)+
+  geom_point(alpha=0.85,mapping= aes(
+    fill=colors, x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato)),
+    size=5,color='black',pch=21) +
+  scale_fill_manual(values = c('darkorange','darkblue','gray50'))+
+  theme_classic()+
+ #  geom_text(aes(label=labels,x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato), vjust=-0.1, hjust = -0.1))+
+  labs(y=expression("-log"["e"] ~ "p" ["adj"]), 
+       x=expression("log"["2"]~"Fold Change"))+
+  theme(axis.text=element_text(size=10, colour = "black"), 
+        axis.line = element_line(colour = "black"),
+        legend.position='none');p_rpneg
+```
+
+
+
+# Hilic pos
+```{r}
+d <- read.csv("Data/lcms_61157_tomato_results_hilic_pos.csv")
+d$colors <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=="0", "NS",
+                        ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1',"Modern",
+                               ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='-1','Wild',NA)))
+
+d <- d %>%
+mutate(colors = as_factor(colors)) %>%
+mutate(colors = fct_relevel(colors, "Wild", "Modern", "NS"))
+table(d$colors)
+
+d$labels <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1', d$Name, ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato == '-1', d$Name, NA))
+
+p_hilicpos<-ggplot(data=d)+
+  geom_point(alpha=0.85,mapping= aes(
+    fill=colors, x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato)),
+    size=5,color='black',pch=21) +
+  scale_fill_manual(values = c('darkorange','darkblue','gray50'))+
+  theme_classic()+
+ #  geom_text(aes(label=labels,x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato), vjust=-0.1, hjust = -0.1))+
+  labs(y=expression("-log"["e"] ~ "p" ["adj"]), 
+       x=expression("log"["2"]~"Fold Change"))+
+  theme(axis.text=element_text(size=10, colour = "black"), 
+        axis.line = element_line(colour = "black"),
+        legend.position='none');p_hilicpos
+```
+
+
+
+# Hilic neg
+```{r}
+d <- read.csv("Data/lcms_61157_tomato_results_hilic_neg.csv")
+d$colors <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=="0", "NS",
+                        ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1',"Modern",
+                               ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='-1','Wild',NA)))
+
+d <- d %>%
+mutate(colors = as_factor(colors)) %>%
+mutate(colors = fct_relevel(colors, "Wild", "Modern", "NS"))
+table(d$colors)
+
+d$labels <- ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1', d$Name, ifelse(d$Flag_A_Domesticated.Tomato_vs_Wild.Tomato == '-1', d$Name, NA))
+
+p_hilicneg<-ggplot(data=d)+
+  geom_point(alpha=0.85,mapping= aes(
+    fill=colors, x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato)),
+    size=5,color='black',pch=21) +
+  scale_fill_manual(values = c('darkorange','darkblue','gray50'))+
+  theme_classic()+
+  # geom_text(aes(label=labels,x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato), vjust=-0.1, hjust = -0.1))+
+  labs(y=expression("-log"["e"] ~ "p" ["adj"]), 
+       x=expression("log"["2"]~"Fold Change"))+
+  theme(axis.text=element_text(size=10, colour = "black"), 
+        axis.line = element_line(colour = "black"),
+        legend.position='none');p_hilicneg
+```
+
+# GCMS
+```{r}
+d_sp <- read.csv("Data/gcms_61157_tomato_results_Sp.csv")
+d_sp$colors <- ifelse(d_sp$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=="0", "NS",
+                        ifelse(d_sp$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1',"Modern",
+                               ifelse(d_sp$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='-1','Wild',NA)))
+
+d_sp <- d_sp %>%
+mutate(colors = as_factor(colors)) %>%
+mutate(colors = fct_relevel(colors, "Wild", "Modern", "NS"))
+table(d_sp$colors)
+
+d_sp$labels <- ifelse(d_sp$Flag_A_Domesticated.Tomato_vs_Wild.Tomato=='1', d_sp$Metabolite, ifelse(d_sp$Flag_A_Domesticated.Tomato_vs_Wild.Tomato == '-1', d_sp$Metabolite, NA))
+
+p_gc<-ggplot(data=d_sp)+
+  geom_point(alpha=0.85,mapping= aes(
+    fill=colors, x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato)),
+    size=5,color='black',pch=21) +
+  scale_fill_manual(values = c('darkorange','darkblue','gray50'))+
+  theme_classic()+
+   geom_text(aes(label=labels,x=Fold_change_Domesticated.Tomato_vs_Wild.Tomato,y=-log(P_value_A_Domesticated.Tomato_vs_Wild.Tomato), vjust=-0.1, hjust = -0.1))+
+  labs(y=expression("-log"["e"] ~ "p" ["adj"]), 
+       x=expression("log"["2"]~"Fold Change"))+
+  theme(axis.text=element_text(size=10, colour = "black"), 
+        axis.line = element_line(colour = "black"),
+        legend.position = 'none');p_gc
+```
+
+
+```{r}
+p <- (p_rppos+p_rpneg)/ (p_hilicpos+p_hilicneg) / (p_gc+p_gc)  + plot_layout(axes = "collect")+ plot_layout(guides = "collect");p
+#ggsave(plot = p, "../Manuscript/figs/R_output/exudate_volcano.png", width = 10, height = 10)
+```
+
