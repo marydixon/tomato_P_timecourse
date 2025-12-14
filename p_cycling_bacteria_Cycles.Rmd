@@ -1,0 +1,257 @@
+---
+title: "P Cycling Bacteria"
+author: "MD"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(car)
+library(phyloseq)
+library(agricolae)
+library(emmeans)
+library(vegan)
+library(ggbeeswarm)
+library(pairwiseAdonis)
+par(mfrow=c(2,2))
+P.rel <- subset_samples(P.rel, Autoclave_status == "Sterile Soil")  
+
+```
+
+
+```{r}
+
+P.rel <- readRDS("Data/P.rel.Cycles.RDS")
+kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
+kegg <- kegg %>%
+  mutate_if(is.numeric, replace_na, replace=0)
+
+```
+# P decomp
+```{r}
+wanted <- kegg[kegg$phoA > 0 | kegg$phoD > 0 | kegg$PHO > 0 | kegg$appA > 0 | kegg$phoN > 0 ,  ]$Species
+P.sub <- subset_taxa(P.rel, Species %in% wanted)
+
+P.glom <- tax_glom(P.sub, taxrank="Species")
+P.glom <- prune_taxa(taxa_sums(P.glom) > 0, P.glom)
+pdecomp <- psmelt(P.glom) %>% 
+  filter(., Abundance != 0)
+pdecomp$Fert_Pattern <- gsub('-','_', pdecomp$Fert_Pattern)
+pdecomp$C1_plant_condition <- gsub('-','_', pdecomp$C1_plant_condition)
+pdecomp$Autoclave_status <- gsub(' ','_', pdecomp$Autoclave_status)
+
+```
+
+```{r}
+
+mod <- lm(log(Abundance) ~ Fert_Pattern*C1_plant_condition, data = pdecomp)
+plot(mod)
+
+
+Anova(mod, type = 3)
+t <- HSD.test(mod, "C1_plant_condition");t
+emmip(mod, C1_plant_condition ~ Fert_Pattern, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ C1_plant_condition|Fert_Pattern)
+
+emmeans(mod, ~ C1_plant_condition*Fert_Pattern, type = "response")
+df <- as.data.frame(emmeans(mod, ~ C1_plant_condition*Fert_Pattern, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ C1_plant_condition*Fert_Pattern), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fert_Pattern, C1_plant_condition, .group)
+df <- inner_join(df,groups, by = c('Fert_Pattern', 'C1_plant_condition'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+df <- df %>%
+mutate(C1_plant_condition = as_factor(C1_plant_condition)) %>%
+mutate(C1_plant_condition = fct_relevel(C1_plant_condition,"No_plant","Wild",  "Modern"))
+table(df$C1_plant_condition)
+df <- df %>%
+mutate(Fert_Pattern = as_factor(Fert_Pattern)) %>%
+mutate(Fert_Pattern = fct_relevel(Fert_Pattern, "Unfertilized_Unfertilized",  "Unfertilized_Fertilized", "Fertilized_Unfertilized", "Fertilized_Fertilized"))
+table(df$Fert_Pattern)
+```
+
+```{r}
+df.f <- filter(df, Fert_Pattern == "Fertilized_Fertilized" |  Fert_Pattern == "Fertilized_Unfertilized")
+df.u <- filter(df, Fert_Pattern == "Unfertilized_Fertilized" |  Fert_Pattern == "Unfertilized_Unfertilized")
+```
+
+```{r}
+p.min_u <- ggplot(aes(x=Fert_Pattern, y=response, fill = C1_plant_condition), data = df.u) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
+  theme_classic()+
+ ylab(expression(atop("Relative Abundance", paste("(P Mineralizing Bacteria)")))) +
+  theme(legend.title = element_blank(),
+        legend.position = 'none',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p.min_u
+```
+
+
+```{r}
+p.min_f <- ggplot(aes(x=Fert_Pattern, y=response, fill = C1_plant_condition), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
+  theme_classic()+
+ ylab(expression(atop("Relative Abundance", paste("(P Mineralizing Bacteria)")))) +
+  theme(legend.title = element_blank(),
+        legend.position = 'none',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p.min_f
+```
+
+
+# P sol
+```{r}
+wanted <- kegg[kegg$pqqC > 0  ,  ]$Species
+P.sub <- subset_taxa(P.rel, Species %in% wanted)
+
+P.glom <- tax_glom(P.sub, taxrank="Species")
+P.glom <- prune_taxa(taxa_sums(P.glom) > 0, P.glom)
+psol <- psmelt(P.glom) %>% 
+  filter(., Abundance != 0)
+psol$Fert_Pattern <- gsub('-','_', psol$Fert_Pattern)
+psol$C1_plant_condition <- gsub('-','_', psol$C1_plant_condition)
+psol$Autoclave_status <- gsub(' ','_', psol$Autoclave_status)
+```
+
+```{r}
+
+mod <- lm(log(Abundance) ~ Fert_Pattern*C1_plant_condition, data = psol)
+plot(mod)
+
+
+Anova(mod, type = 3)
+t<- HSD.test(mod, "C1_plant_condition");t
+emmip(mod, C1_plant_condition ~  Fert_Pattern, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ C1_plant_condition|Fert_Pattern)
+
+emmeans(mod, ~ C1_plant_condition*Fert_Pattern, type = "response")
+df <- as.data.frame(emmeans(mod, ~ C1_plant_condition*Fert_Pattern, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ C1_plant_condition*Fert_Pattern), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fert_Pattern, C1_plant_condition, .group)
+df <- inner_join(df,groups, by = c('Fert_Pattern', 'C1_plant_condition'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+df <- df %>%
+mutate(C1_plant_condition = as_factor(C1_plant_condition)) %>%
+mutate(C1_plant_condition = fct_relevel(C1_plant_condition, "No_plant", "Wild", "Modern" ))
+table(df$C1_plant_condition)
+df <- df %>%
+mutate(Fert_Pattern = as_factor(Fert_Pattern)) %>%
+mutate(Fert_Pattern = fct_relevel(Fert_Pattern, "Unfertilized_Unfertilized", "Unfertilized_Fertilized", "Fertilized_Unfertilized",  "Fertilized_Fertilized"))
+table(df$Fert_Pattern)
+```
+
+```{r}
+df.f <- filter(df, Fert_Pattern == "Fertilized_Fertilized" |  Fert_Pattern == "Fertilized_Unfertilized")
+df.u <- filter(df, Fert_Pattern == "Unfertilized_Fertilized" |  Fert_Pattern == "Unfertilized_Unfertilized")
+```
+
+```{r}
+p.sol_u <- ggplot(aes(x=Fert_Pattern, y=response, fill = C1_plant_condition), data = df.u) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
+  theme_classic()+
+ ylab(expression(atop("Relative Abundance", paste("(P Solubilizing Bacteria)")))) +
+  theme(legend.title = element_blank(),
+        legend.position = 'none',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p.sol_u
+
+```
+
+
+```{r}
+p.sol_f <- ggplot(aes(x=Fert_Pattern, y=response, fill = C1_plant_condition), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
+  theme_classic()+
+ ylab(expression(atop("Relative Abundance", paste("(P Solubilizing Bacteria)")))) +
+  theme(legend.title = element_blank(),
+        legend.position = 'none',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p.sol_f
+
+```
+
+
+
+
+# Staked bar plot
+```{r}
+p.sub <- subset_samples(P.rel, C1_plant_condition != "No-plant" &
+                         Fert_Pattern != "Unfertilized-Fertilized" &
+                         Fert_Pattern != "Unfertilized-Unfertilized")
+
+d <- psmelt(p.sub) %>% 
+  arrange(desc(Abundance)) %>% 
+  filter(Abundance > 0)
+d.sum <- summarize(group_by(d, C1_plant_condition, Species),
+                   mean=mean(Abundance)) %>% 
+  arrange(desc(C1_plant_condition), desc(mean))
+
+d.sumsub <- filter(d.sum, (C1_plant_condition == "Wild" & Species %in% c("Neobacillus niacini", "Bacillus sp. S3",
+                                         "Trichocoleus desertorum", 
+                                         "Mesobacillus subterraneus",
+                                         "Vicinamibacter silvestris",
+                                         "Oscillatoria nigro-viridis",
+                                         "Skermanella stibiiresistens",
+                                         "Tumebacillus ginsengisoli",
+                                         "Geitlerinema sp. PCC 7407",
+                                         "Arthrobacter sp. QXT-31"
+)) | (C1_plant_condition == "Modern" & Species %in% c("Bacillus sp. S3", "Neobacillus niacini",
+                     "Oscillatoria nigro-viridis",
+                     "Mesobacillus subterraneus",
+                     "Vicinamibacter silvestris",
+                     "Skermanella stibiiresistens",
+                     "Microvirga ossetica",
+                     "Nitrosospira multiformis",
+                     "Tumebacillus ginsengisoli",
+                     "Nitrosospira briensis")))
+x = tapply(d.sumsub$mean, d.sumsub$Species, function(x) max(x))
+x = sort(-x, TRUE)
+d.sumsub$Species = factor(as.character(d.sumsub$Species), levels=names(x))
+p<-ggplot(d.sumsub, aes(C1_plant_condition, mean, fill = Species)) +
+  geom_col() +
+  labs(y='Relative Abundance')+
+  scale_fill_manual(values = c("firebrick1","burlywood4",  "aquamarine3","darkorchid4","chocolate", "darksalmon","brown","darkkhaki","darkolivegreen2","goldenrod1",  "darkgreen", "dodgerblue", "darkblue"))+
+  theme(axis.title.x=element_blank(),
+        axis.text=element_text(size = 10,color="black"),
+        axis.text.x = element_text(color='black'),
+        axis.title=element_text(size = 12,color='black',face="bold"),
+        axis.line=element_line(color="black"),
+        legend.title=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.border=element_blank(),
+        panel.background=element_blank(),
+        legend.background = element_blank());p
+```
+
