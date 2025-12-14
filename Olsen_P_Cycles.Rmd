@@ -1,0 +1,223 @@
+---
+title: "Olsen Phosphorus Concentration"
+author: "MD"
+date: "'r format(Sys.time(), '%b %d, %Y')'"
+output: 
+ html_document:
+   toc: true
+   toc_float: true
+   editor_options:
+     chunk_output_type: console
+   chunck_output_type: console
+   chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(emmeans)
+library(RColorBrewer)
+library(car)
+library(agricolae)
+```
+
+# Read in Data
+
+```{r}
+d <- read.csv('Data/Olsen_P_Cycles.csv') %>% 
+  filter(!is.na(Olsen_ppm)) 
+d$soil.conditioning <- gsub('W','Wild',d$soil.conditioning)
+d$soil.conditioning <- gsub('M','Modern',d$soil.conditioning)
+d$soil.conditioning <- gsub('O','No_Plant',d$soil.conditioning)
+
+d$Fertilization <- gsub('FF','Fertilized_Fertilized',d$Fertilization)
+d$Fertilization <- gsub('UF','Unfertilized_Fertilized',d$Fertilization)
+d$Fertilization <- gsub('FU','Fertilized_Unfertilized',d$Fertilization)
+d$Fertilization <- gsub('UU','Unfertilized_Unfertilized',d$Fertilization)
+
+
+d <- d %>%
+mutate(soil.conditioning = as_factor(soil.conditioning)) %>%
+mutate(soil.conditioning = fct_relevel(soil.conditioning, "Wild", "Modern", "No_Plant"))
+table(d$soil.conditioning)
+d <- d %>%
+mutate(Fertilization = as_factor(Fertilization)) %>%
+mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized_Unfertilized",  "Unfertilized_Fertilized", "Fertilized_Unfertilized", "Fertilized_Fertilized"))
+table(d$Fertilization)
+
+par(mfrow=c(2,2))
+```
+
+
+```{r}
+
+mod <- lm((Olsen_ppm) ~ Fertilization*soil.conditioning, data = d)
+outlierTest(mod)
+plot(mod)
+aov.mod <- aov(mod)
+summary(aov.mod)
+Anova(mod, type = 3)
+emmip(mod, soil.conditioning ~  Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ soil.conditioning|Fertilization)
+
+emmeans(mod, ~ Fertilization, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*soil.conditioning, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*soil.conditioning), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, soil.conditioning, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'soil.conditioning'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+df$soil.conditioning <- gsub("O", "No_Plant", df$soil.conditioning)
+df <- df %>%
+mutate(soil.conditioning = as_factor(soil.conditioning)) %>%
+mutate(soil.conditioning = fct_relevel(soil.conditioning,"No_Plant","Wild",  "Modern"))
+table(df$soil.conditioning)
+df <- df %>%
+mutate(Fertilization = as_factor(Fertilization)) %>%
+mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized_Unfertilized",  "Unfertilized_Fertilized", "Fertilized_Unfertilized", "Fertilized_Fertilized"))
+table(df$Fertilization)
+
+df.f <- filter(df, Fertilization == "Fertilized_Fertilized" |  Fertilization == "Fertilized_Unfertilized")
+df.u <- filter(df, Fertilization == "Unfertilized_Fertilized" |  Fertilization == "Unfertilized_Unfertilized")
+
+p_o_f <- ggplot(aes(x=Fertilization, y=response, fill = soil.conditioning), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = lower.CL, ymax = upper.CL))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
+  theme_classic()+
+  labs(y="Olsen P (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_o_f
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Model Fitting
+
+```{r}
+par(mfrow=c(2,2))
+mod <- lm(Olsen_ppm ~ Fertilization*soil.conditioning*Sterility, data = d)
+plot(mod)
+outlierTest(mod)
+
+# d  <- op[-c(90),]
+# mod <- lm(Olsen_ppm ~ Fertilization*soil.conditioning*Sterility, data = d)
+# plot(mod)
+
+aov.mod <- aov(mod)
+summary(aov.mod)
+t <- HSD.test(mod,"Fertilization");t
+
+```
+
+# Graph
+
+```{r}
+d.sum <-summarise(group_by(d,Sterility, Fertilization, soil.conditioning),
+  n = n(),
+  mean = mean(Olsen_ppm),
+  sd = sd(Olsen_ppm),
+  se = sd/sqrt(n)) %>% 
+  arrange(., by=Fertilization) 
+d.sum$letters<-c('d','d','d','d','d','d','c','c','c','c','c','c','b','b','b','b','b','b','a','a','a','a','a','a')
+
+
+names(sum_rl)[names(sum_rl) == '.group'] <- 'letters'
+sum_rl$letters <- gsub(' ','',sum_rl$letters)
+
+
+p <- ggplot(aes(x=Fertilization, y=mean, fill = soil.conditioning), data = d.sum) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = mean-se, ymax = mean+se))+
+  scale_fill_manual(values = c('darkorange2','darkblue','yellow3'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
+  facet_wrap(~Sterility, ncol=2)+
+  theme_classic()+
+  labs(y="Olsen P (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        axis.text = element_text(color='black'),
+        axis.text.x = element_text(angle = 90),
+        axis.title.x = element_blank());p
+
+p2<-ggplot(d.sum, aes(Fertilization, mean, fill = soil.conditioning)) +
+  facet_wrap(~Sterility)+
+  geom_col(position = 'dodge') +
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -0.5, hjust = -0.2) +
+  scale_fill_brewer(palette = 'Paired', breaks=c("No_Plant","Wild","Modern")) +  
+  labs(y='Olsen P (mg/kg)')+
+  geom_errorbar(aes(ymin = mean-se, ymax = mean+se),position=position_dodge(0.9), width = .25)+
+ theme(axis.text=element_text(size=14, colour = "black"), 
+        axis.title=element_text(size=12,face="bold"),
+        axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.x = element_blank());p2
+ggsave(plot=p2, '../Data/R_PPT_figs/OlsenP.png',height=6,width=10)
+
+
+
+
+
+sum_op<-summarise(group_by(d,Variety,Domestication,Fertilization),
+  n = n(),
+  mean = mean(Olsen_P),
+  sd = sd(Olsen_P),
+  se = sd/sqrt(n))
+
+sum_op$letters <- c('cd','ab','bc','ab','ab','ab','cb','ab','d','ab','cd','ab','cd','ab','cd','ab','cd','ab','d','a','cd','b','cd','ab') #from emmeans contrasts above for Fertilization*Domestication*Variety
+
+level_order <- factor(sum_op$Variety,level = c('LA0716',  'LA1580', 'LA1698', 'LA1519', 'Matchless', 'B Pink', 'Marglobe', 'Rutgers','Bobcat','Quali T','Line 1','Line 2'))
+p<-ggplot(sum_op, aes(level_order, mean, fill = Domestication)) + 
+  geom_col(position = 'dodge') +
+  geom_text(aes(label = letters), vjust = -0.45, hjust = -0.28, size = 6) +
+  facet_wrap(~Fertilization, scales = 'free', ncol=1)+
+  labs(y='Olsen Phosphorus (mg/kg)')+
+  geom_errorbar(aes(ymin = mean-se, 
+                    ymax = mean+se),
+                position=position_dodge(0.9), width = .25)+
+  scale_fill_brewer(palette = 'Paired')+
+  theme(axis.text.x=element_text(size=14, colour = "black", angle = 90), 
+        axis.text.y=element_text(size=14, colour = "black"),
+        axis.title=element_text(size=16,face="bold"),
+        axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        strip.text.y = element_text(size=8, face="bold"), 
+        legend.position = 'none',
+        strip.text = element_blank(),
+        strip.background = element_blank(),
+        axis.title.x = element_blank());p
+
+
+ggsave(plot=p, filename = 'Data/Outputs/Figures/Figure3.pdf', width = 12, height = 10)
+
+```
+
