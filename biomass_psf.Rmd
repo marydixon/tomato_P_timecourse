@@ -1,303 +1,140 @@
 ---
-title: "Biomass and PSF"
+title: "Relative Biomass and Phosphorus Stress Factor"
 author: "MD"
-date: '`r Sys.Date()`'
+date: "'r format(Sys.time(), '%b %d, %Y')'"
 output: 
  html_document:
    toc: true
    toc_float: true
    editor_options:
+     chunk_output_type: console
    chunck_output_type: console
    chunk_output_type: console
 ---
-# Setup
- 
-## Load libraries 
-```{r, include = F}
+
+```{r}
 library(tidyverse)
-library(car)
 library(emmeans)
+library(RColorBrewer)
+library(car)
+library(agricolae)
 library(patchwork)
 ```
 
-## Load data
-```{r, echo=F}
-d <- read.csv('Data/Biomass_TimeCourse.csv') %>% 
-  filter(.,!is.na(Shoot_Biomass_g)) %>% 
-  filter(.,!is.na(Root_Biomas_g))
+# Read in Data
 
+```{r}
+d <- read.csv('Data/Biomass.csv') 
+d$Condition <- gsub(' ','',d$Condition)
+d$Fertilization <- gsub('FF','Fertilized_Fertilized',d$Fertilization)
+d$Fertilization <- gsub('UF','Unfertilized_Fertilized',d$Fertilization)
+d$Fertilization <- gsub('FU','Fertilized_Unfertilized',d$Fertilization)
+d$Fertilization <- gsub('UU','Unfertilized_Unfertilized',d$Fertilization)
+
+d <- d %>%
+mutate(Condition = as_factor(Condition)) %>%
+mutate(Condition = fct_relevel(Condition, "No_Plant", "Wild", "Modern"))
+table(d$Condition)
 d <- d %>%
 mutate(Fertilization = as_factor(Fertilization)) %>%
-mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized", "Fertilized"))
+mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized_Unfertilized","Unfertilized_Fertilized",  "Fertilized_Unfertilized",  "Fertilized_Fertilized"))
 table(d$Fertilization)
 
-d <- d %>%
-mutate(Harvest = as_factor(Harvest)) %>%
-mutate(Harvest = fct_relevel(Harvest, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
-table(d$Harvest)
-d<- select(d, Sample_ID, Rep, Domestication, Harvest, Fertilization, Shoot_Biomass_g, Root_Biomas_g)
+d.s <- filter(d, Sterility == "Sterile")
 
-head(d)
+d.sfp <- filter(d.s, Fertilization != "Unfertilized_Unfertilized") %>% 
+  filter(., Fertilization != "Unfertilized_Fertilized")
+
+s.shoot <- filter(d.s, Type=='Shoot')
+s.root <- filter(d.s, Type == 'Root')
 par(mfrow=c(2,2))
-options(contrasts = c("contr.sum", "contr.poly"))
-
 ```
 
-# Analysis
-## Shoot
-### Model fitting
+# Shoot Biomass
+
 
 ```{r}
-mod <- lm(log(Shoot_Biomass_g) ~  Fertilization*Domestication*Harvest, 
-           data = d)
-Anova(mod, type = 3)
-emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
-
-emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
-
-# emmeans(mod, ~ Fertilization*Domestication*Harvest)
-
-emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response")
-df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response"))
-
-res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication*Harvest), adjust = "fdr")
-plot(res[[1]], horizontal=F)
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
-  select(., Fertilization, Domestication, Harvest, .group)
-df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
-
-names(df)[names(df) == '.group'] <- 'letters'
-df$letters <- gsub(' ','',df$letters)
-```
-
-### Data visualization
-```{r}
-p_shoot <- ggplot(aes(x=Harvest, y=response), data = df) +
-  geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',size=1) +
-  geom_errorbar(width=0.25,alpha=0.5,
-                aes(ymin = lower.CL, ymax = upper.CL, 
-                    group=Domestication,color=Domestication))+
-  scale_color_manual(values = c('darkblue','darkorange2'))+
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
-  facet_wrap(~Fertilization, ncol=2)+
-  theme_classic()+
-  labs(y="Biomass (g)")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        axis.text.x = element_blank(),
-        axis.title.x = element_blank());p_shoot
-#ggsave(plot=p, 'output/shoot_biomass.png', width = 12, height = 6)
-```
-
-## Root
-
-### Model fitting
-```{r}
-mod <- lm(log(Root_Biomas_g) ~  Fertilization*Domestication*Harvest, 
-           data = d)
-Anova(mod, type = 3)
-emmip(mod, Domestication ~ Harvest | Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
-
-emmeans(mod, pairwise ~ Domestication|Harvest|Fertilization)
-
-# emmeans(mod, ~ Fertilization*Domestication*Harvest)
-df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication*Harvest, type = "response"))
-
-res <- emmeans(mod, list(pairwise ~ Harvest*Fertilization*Domestication), adjust = "fdr")
-plot(res[[1]], horizontal=T)
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
-  select(., Fertilization, Domestication, Harvest, .group)
-df <- inner_join(df,groups, by = c('Fertilization', 'Domestication', 'Harvest'))
-
-names(df)[names(df) == '.group'] <- 'letters'
-df$letters <- gsub(' ','',df$letters)
-```
-
-### Data visualization
-```{r}
-p_root <- ggplot(aes(x=Harvest, y=response), data = df) +
-  geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',linewidth=1) +
-  geom_errorbar(width=0.25,alpha=0.5,
-                aes(ymin = lower.CL, ymax = upper.CL, 
-                    group=Domestication,color=Domestication))+
-  scale_color_manual(values = c('darkblue','darkorange2'))+
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
-  facet_wrap(~Fertilization, ncol=2)+
-  theme_classic()+
-  labs(y="Biomass (g)")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        strip.text = element_blank(),
-        axis.title.x = element_blank());p_root
-#ggsave(plot=p, 'output/root_biomass.png', width = 12, height = 6)
-
-```
-
-```{r}
-p_shoot/p_root + plot_layout(axis_titles = "collect") + plot_layout(guides = "collect")
-```
-
-
-## Relative shoot
-
-### Generate relative values 
-```{r}
-rel_shoot <- d %>% 
-  dplyr::select(Harvest,Domestication,Fertilization,Rep,Shoot_Biomass_g) %>% 
-  group_by(Domestication) %>% 
-  pivot_wider(.,names_from = 'Fertilization', values_from = 'Shoot_Biomass_g') %>% 
-  mutate(Rel.Shoot = (Unfertilized*100/Fertilized)) %>% 
-  mutate(PSF = (((Fertilized-Unfertilized)/Unfertilized))*100)%>% 
-  filter(!is.na(Rel.Shoot)) 
-
-rel_root <- d %>% 
-  dplyr::select(Harvest,Domestication,Fertilization,Rep,Root_Biomas_g) %>% 
-  group_by(Domestication) %>% 
-  pivot_wider(.,names_from = 'Fertilization', values_from = 'Root_Biomas_g') %>% 
-  mutate(Rel.Root = (Unfertilized*100/Fertilized)) %>% 
-  mutate(PSF = (((Fertilized-Unfertilized)/Unfertilized))*100)%>% 
-  filter(!is.na(Rel.Root)) 
-```
-
-### Model fitting
-```{r}
-mod <- lm(log(Rel.Shoot) ~  Domestication*Harvest, 
-           data = rel_shoot)
-Anova(mod, type = 3)
-emmip(mod, Domestication ~ Harvest, CIs = TRUE, type = "response")# type = response shows backtransformed 
-
-emmeans(mod, pairwise ~ Domestication|Harvest)
-
-# emmeans(mod, ~ Fertilization*Domestication*Harvest)
-df <- as.data.frame(emmeans(mod, ~ Domestication*Harvest, type = "response"))
-
-res <- emmeans(mod, list(pairwise ~ Harvest*Domestication), adjust = "fdr")
-plot(res[[1]], horizontal=T)
-groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
-  select(., Domestication, Harvest, .group)
-df <- inner_join(df,groups, by = c('Domestication', 'Harvest'))
-
-names(df)[names(df) == '.group'] <- 'letters'
-df$letters <- gsub(' ','',df$letters)
-```
-
-### Data visualization
-```{r}
-p_rshoot <- ggplot(aes(x=Harvest, y=response), data = df) +
-  geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',linewidth=1) +
-  geom_errorbar(width=0.25,alpha=0.5,
-                aes(ymin = lower.CL, ymax = upper.CL, 
-                    group=Domestication,color=Domestication))+
-  scale_color_manual(values = c('darkblue','darkorange2'))+
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
-  theme_classic()+
-  labs(y="Relative Biomass (%)")+
-  theme(legend.title = element_blank(),
-        legend.position = 'right',
-        axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p_rshoot
-
-ggsave(plot=p, 'output/relative_shoot_biomass.png', width = 12, height = 6)
-
-```
-
-## Relative root
-### Model fitting
-```{r}
-mod <- lm(log(Rel.Root) ~  Domestication*Harvest, 
-           data = rel_root)
+mod <- lm(Biomass_g ~ Fertilization*Condition, data = s.shoot)
 plot(mod)
 Anova(mod, type = 3)
-emmip(mod, Domestication ~ Harvest, CIs = TRUE, type = "response")# type = response shows backtransformed 
+emmip(mod, Condition ~ Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+t <- HSD.test(mod, "Condition");t
+emmeans(mod, pairwise ~ Condition|Fertilization)
 
-emmeans(mod, pairwise ~ Domestication|Harvest)
+emmeans(mod, ~ Condition*Fertilization, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Condition*Fertilization, type = "response"))
 
-# emmeans(mod, ~ Fertilization*Domestication*Harvest)
-df <- as.data.frame(emmeans(mod, ~ Domestication*Harvest, type = "response"))
-
-res <- emmeans(mod, list(pairwise ~ Harvest*Domestication), adjust = "fdr")
+res <- emmeans(mod, list(pairwise ~ Condition*Fertilization), adjust = "fdr")
 plot(res[[1]], horizontal=T)
 groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
-  select(., Domestication, Harvest, .group)
-df <- inner_join(df,groups, by = c('Domestication', 'Harvest'))
+  select(., Fertilization, Condition, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Condition'))
 
 names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
-### Data visualization
 
 ```{r}
-p_rroot <- ggplot(aes(x=Harvest, y=response), data = df) +
-  geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',size=1) +
-  geom_errorbar(width=0.25,alpha=0.5,
-                aes(ymin = lower.CL, ymax = upper.CL, 
-                    group=Domestication,color=Domestication))+
-  scale_color_manual(values = c('darkblue','darkorange2'))+
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+df.f <- filter(df, Fertilization == "Fertilized_Fertilized" |  Fertilization == "Fertilized_Unfertilized")
+df.u <- filter(df, Fertilization == "Unfertilized_Fertilized" |  Fertilization == "Unfertilized_Unfertilized")
+
+p_shoot_f <- ggplot(aes(x=Fertilization, y=emmean, fill = Condition), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = emmean-SE, ymax = emmean+SE))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
   theme_classic()+
-  labs(y="Relative Biomass (%)")+
+  labs(y="Shoot Biomass (g)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p_rroot
-ggsave(plot=p, 'output/relative_root_biomass.png', width = 12, height = 6)
-
+       # axis.text.x = element_blank(),
+        axis.title.x = element_blank());p_shoot_f
 ```
 
-
-## Phosphorus stress factor
-
-## Model fitting
+### Root
+## Model
 ```{r}
-mod <- lm(log(PSF) ~  Domestication*Harvest, 
-           data = rel_shoot)
+mod <- lm((Biomass_g) ~ Fertilization*Condition, data = s.root)
 plot(mod)
 Anova(mod, type = 3)
-emmip(mod, Domestication ~ Harvest, CIs = TRUE, type = "response")# type = response shows backtransformed 
+emmip(mod, Condition ~  Fertilization, CIs = TRUE, type = "response")# type = response shows backtransformed 
+t <- HSD.test(mod, "Condition");t
+emmeans(mod, pairwise ~ Condition|Fertilization)
 
-emmeans(mod, pairwise ~ Domestication|Harvest)
+emmeans(mod, ~ Condition*Fertilization, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Condition*Fertilization, type = "response"))
 
-# emmeans(mod, ~ Fertilization*Domestication*Harvest)
-df <- as.data.frame(emmeans(mod, ~ Domestication*Harvest, type = "response"))
-
-res <- emmeans(mod, list(pairwise ~ Harvest*Domestication), adjust = "fdr")
+res <- emmeans(mod, list(pairwise ~ Condition*Fertilization), adjust = "fdr")
 plot(res[[1]], horizontal=T)
 groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
-  select(., Domestication, Harvest, .group)
-df <- inner_join(df,groups, by = c('Domestication', 'Harvest'))
+  select(., Fertilization, Condition, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Condition'))
 
 names(df)[names(df) == '.group'] <- 'letters'
 df$letters <- gsub(' ','',df$letters)
 ```
 
-### Data visualization
 ```{r}
-p_psf <- ggplot(aes(x=Harvest, y=response), data = df) +
-  geom_line(aes(color=Domestication, group=Domestication),
-            stat='summary',fun='mean',size=1) +
-  geom_errorbar(width=0.25,alpha=0.5,
-                aes(ymin = lower.CL, ymax = upper.CL, 
-                    group=Domestication,color=Domestication))+
-  scale_color_manual(values = c('darkblue','darkorange2'))+
-  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -3, hjust = -0.2) +
+df.f <- filter(df, Fertilization == "Fertilized_Fertilized" |  Fertilization == "Fertilized_Unfertilized")
+df.u <- filter(df, Fertilization == "Unfertilized_Fertilized" |  Fertilization == "Unfertilized_Unfertilized")
+
+p_root_f<- ggplot(aes(x=Fertilization, y=response, fill = Condition), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = response-SE, ymax = response+SE))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -1, hjust = 0) +
   theme_classic()+
-  labs(y="Phosphorus Stress Factor (%)")+
+  labs(y="Root Biomass (g)")+
   theme(legend.title = element_blank(),
         legend.position = 'right',
         axis.text = element_text(color='black'),
-        axis.title.x = element_blank());p_psf
-ggsave(plot=p, 'output/p_stress_factor.png', width = 12, height = 6)
-
+        axis.title.x = element_blank());p_root_f
 ```
 
 ```{r}
-(p_rshoot+p_rroot + plot_layout(axis_titles = "collect"))/p_psf  + plot_layout(guides = "collect")
+p.ss/p.sr + plot_layout(axis_titles = "collect") + plot_layout(guides = "collect")
 ```
-
