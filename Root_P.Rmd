@@ -1,0 +1,216 @@
+---
+title: "Root Phosphorus"
+author: "MD"
+date: "'r format(Sys.time(), '%b %d, %Y')'"
+output: 
+ html_document:
+   toc: true
+   toc_float: true
+   editor_options:
+     chunk_output_type: console
+   chunck_output_type: console
+   chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(emmeans)
+library(RColorBrewer)
+library(car)
+library(agricolae)
+library(patchwork)
+```
+
+# Read in Data
+
+```{r}
+d <- read.csv('Data/Root_P_Cycles.csv') %>% 
+    filter(!is.na(P_mg_kg)) 
+
+
+
+d$Fertilization <- gsub('F_F','Fertilized_Fertilized',d$Fertilization)
+d$Fertilization <- gsub('U_F','Unfertilized_Fertilized',d$Fertilization)
+d$Fertilization <- gsub('F_U','Fertilized_Unfertilized',d$Fertilization)
+d$Fertilization <- gsub('U_U','Unfertilized_Unfertilized',d$Fertilization)
+
+
+d <- d %>%
+mutate(Domestication = as_factor(Domestication)) %>%
+mutate(Domestication = fct_relevel(Domestication, "No_Plant", "Wild", "Modern"))
+table(d$Domestication)
+d <- d %>%
+mutate(Fertilization = as_factor(Fertilization)) %>%
+mutate(Fertilization = fct_relevel(Fertilization, "Unfertilized_Unfertilized",  "Unfertilized_Fertilized", "Fertilized_Unfertilized",  "Fertilized_Fertilized"))
+table(d$Fertilization)
+
+par(mfrow=c(2,2))
+```
+
+# Concentration
+
+
+```{r}
+
+mod <- lm((P_mg_kg) ~ Fertilization*Domestication, data = d)
+
+plot(mod)
+
+Anova(mod, type = 3)
+emmip(mod, Domestication ~  Fertilization, CIs = TRUE)# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Fertilization)
+
+emmeans(mod, ~ Fertilization, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+```
+
+```{r}
+df.f <- filter(df, Fertilization == "Fertilized_Fertilized" | Fertilization == "Unfertilized_Fertilized")
+df.u <- filter(df, Fertilization == "Unfertilized_Fertilized" |  Fertilization == "Unfertilized_Unfertilized")
+```
+
+```{r}
+p_conc_u <- ggplot(aes(x=Fertilization, y=response, fill = Domestication), data = df.u) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = response-SE, ymax = response+SE))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -0.5, hjust = 0) +
+  theme_classic()+
+  labs(y="Root P Concentration (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_conc_u
+#ggsave(plot = p_conc, "../../Manuscript/figs/R_output/cycles_pconc.png", width = 8, height = 6)
+```
+
+
+```{r}
+p_conc_f <- ggplot(aes(x=Fertilization, y=response, fill = Domestication), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = response-SE, ymax = response+SE))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -0.5, hjust = 0) +
+  theme_classic()+
+  labs(y="Root P Concentration (mg/kg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_conc_f
+#ggsave(plot = p_conc, "../../Manuscript/figs/R_output/cycles_pconc.png", width = 8, height = 6)
+```
+
+# Uptake
+
+
+
+```{r}
+
+mod <- lm((P_Uptake) ~ Fertilization*Domestication, data = d)
+
+plot(mod)
+
+Anova(mod, type = 3)
+emmip(mod, Domestication ~  Fertilization, CIs = TRUE)# type = response shows backtransformed 
+
+emmeans(mod, pairwise ~ Domestication|Fertilization)
+
+emmeans(mod, ~ Fertilization, type = "response")
+df <- as.data.frame(emmeans(mod, ~ Fertilization*Domestication, type = "response"))
+
+res <- emmeans(mod, list(pairwise ~ Fertilization*Domestication), adjust = "fdr")
+plot(res[[1]], horizontal=T)
+groups <- data.frame(multcomp::cld(res[[1]], adjust='fdr', Letters=c("abcdefghijklmnopqrstuvwxy"), decreasing=T)) %>% 
+  select(., Fertilization, Domestication, .group)
+df <- inner_join(df,groups, by = c('Fertilization', 'Domestication'))
+
+names(df)[names(df) == '.group'] <- 'letters'
+df$letters <- gsub(' ','',df$letters)
+```
+
+```{r}
+df.f <- filter(df, Fertilization == "Fertilized_Fertilized" |  Fertilization == "Fertilized_Unfertilized")
+df.u <- filter(df, Fertilization == "Unfertilized_Fertilized" |  Fertilization == "Unfertilized_Unfertilized")
+```
+
+```{r}
+p_up_u <- ggplot(aes(x=Fertilization, y=response, fill = Domestication), data = df.u) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = response-SE, ymax = response+SE))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -0.5, hjust = 0) +
+  theme_classic()+
+  labs(y="Root P Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_up_u
+
+#ggsave(plot = p_up, "../../Manuscript/figs/R_output/cycles_puptake.png", width = 8, height = 6)
+```
+
+
+```{r}
+p_up_f <- ggplot(aes(x=Fertilization, y=response, fill = Domestication), data = df.f) +
+  geom_col(position = 'dodge') +
+  geom_errorbar(position = position_dodge(0.9),width=0.25,alpha=0.5,
+                aes(ymin = response-SE, ymax = response+SE))+
+  scale_fill_manual(values = c('yellow3','darkorange2','darkblue'))+
+  geom_text(aes(label = letters),position=position_dodge(0.9), vjust = -0.5, hjust = 0) +
+  theme_classic()+
+  labs(y="Root P Uptake (mg)")+
+  theme(legend.title = element_blank(),
+        legend.position = 'right',
+        axis.text = element_text(color='black'),
+        axis.title.x = element_blank());p_up_f
+
+#ggsave(plot = p_up, "../../Manuscript/figs/R_output/cycles_puptake.png", width = 8, height = 6)
+```
+
+
+Run biomass, P solubilizers, and olsen P before generating below graph
+
+```{r}
+p_shoot_f
+p_root_f
+p_up_f
+p_conc_f
+p.sol_f
+p.min_f
+p_o_f
+
+
+p_f <- (p_shoot_f+p_root_f)/ (p_conc_f+p_up_f)/ (p.sol_f+p.min_f)/ (p_o_f+p_o_f) + plot_layout(axes = "collect")+plot_layout(guides = "collect");p_f
+#ggsave(plot = p_f, "../../Manuscript/figs/R_output/cycles_rootp.png", width = 10, height = 9)
+```
+
+
+
+```{r}
+p_shoot_u
+p_root_u
+p_up_u
+p_conc_u
+p.min_u
+p.sol_u
+p_o_u
+
+p_u <- (p_shoot_u+p_root_u)/ (p_conc_u+p_up_u) /(p.min_u+p.sol_u) / (p_o_u+p.sol_u) + plot_layout(axes = "collect")+ plot_layout(guides = "collect");p_u
+#ggsave(plot = p_u, "../../Manuscript/figs/R_output/cycles_rootp_unfert.png", width = 10, height = 9)
+```
+
+
+
