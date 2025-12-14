@@ -14,6 +14,9 @@ library(tidyverse)
 library(phyloseq)
 library(ggbeeswarm)
 library(readxl)
+library(emmeans)
+library(agricolae)
+library(car)
 ```
 
 # Load data and create dataframes
@@ -31,8 +34,7 @@ for (n in 1:nsamples(P.count)) {
 }
 
 otu_table(P.count)[is.na(otu_table(P.count))] <- 0
-#saveRDS(P.count, 'phyloseq/P.Time.count.RDS')
-#P.count <- readRDS('phyloseq/P.Time.count.RDS')
+
 P.sub <- subset_samples(P.count, Reads.16S >= 10000)
 colnames(tax_table(P.sub)) <- c('Kingdom', 'Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species')
 
@@ -55,6 +57,17 @@ uw <-  subset_samples(p.u, Domestication == 'Wild')
 um <-  subset_samples(p.u, Domestication == 'Modern')
 fw <-  subset_samples(p.f, Domestication == 'Wild')
 fm <-  subset_samples(p.f, Domestication == 'Modern')
+p.f1 <- subset_samples(p.f, Stage == 'Seedling')
+p.f2 <- subset_samples(p.f, Stage == 'Early_Vegetative')
+p.f3 <- subset_samples(p.f, Stage == 'Late_Vegetative')
+p.f4 <- subset_samples(p.f, Stage == 'Early_Flower')
+p.f5 <- subset_samples(p.f, Stage == 'Late_Flower')
+p.w <- subset_samples(P.sub, Domestication == 'Wild')
+p.w1 <- subset_samples(p.w, Stage == 'Seedling')
+p.w2 <- subset_samples(p.w, Stage == 'Early_Vegetative')
+p.w3 <- subset_samples(p.w, Stage == 'Late_Vegetative')
+p.w4 <- subset_samples(p.w, Stage == 'Early_Flower')
+p.w5 <- subset_samples(p.w, Stage == 'Late_Flower')
 ```
 
 
@@ -331,9 +344,7 @@ d.fm <- rbind(fm_s_ev, fm_ev_lv, fm_lv_ef, fm_ef_lf)%>%
 ## Together 
 ```{r}
 d.all <- rbind(d.uw, d.um, d.fm, d.fw)
-kegg <- read_excel('Data/EMU_database.GIBBs.KO.PICRUST2.xlsx', sheet='EMU_database.GIBBs.PICRUSt2', range='B9:BE17565')
-kegg <- kegg %>%
-  mutate_if(is.numeric, replace_na, replace=0)
+
 dflist <- d.all$feature
 keggsub <- filter(kegg, Species %in% dflist)
 names(d.all)[names(d.all) == 'feature'] <- 'Species'
@@ -372,7 +383,6 @@ ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                        
  ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
         ifelse(d$Gene=="norC","Denitrification",
           ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
-#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
 d.sum <- summarize(group_by(d, Species, enrich_group, Fertilization, Domestication, Gene, Contrast,Function,Group),
                    n=(n), mean = mean(ef_logFC)) %>% 
   filter(., Function != 'Assimilatory nitrate reduction') %>% 
@@ -426,130 +436,218 @@ p<-ggplot(d.sum, aes(x=interaction(Contrast,enrich_group), y=(Function), color=G
         legend.title = element_blank(),
         strip.background = element_blank(),
         axis.title.x = element_blank());p
+#ggsave(plot = p, filename = "fig5.png", height = 7, width = 14)
 ```
 
 
 
-
-
-
-# Old diff abund code 
-
-## Combine above data and get data ready to graph
-
-```{r}
-d <- rbind(d.uw, d.um, d.fw, d.fm)
-
-d <- d %>%
-mutate(Contrast = as_factor(Contrast)) %>%
-mutate(Contrast = fct_relevel(Contrast, "Seedling-Early_Vegetative", "Early_Vegetative-Late_vegetative", "Late_Vegetative-Early_Flower", "Early_Flower-Late_Flower"))
-table(d$Contrast)
-
-d <- d %>%
-mutate(enrich_group = as_factor(enrich_group)) %>%
-mutate(enrich_group = fct_relevel(enrich_group, "Seedling", "Early_Vegetative", "Late_Vegetative", "Early_Flower", "Late_Flower"))
-table(d$enrich_group)
-count.d <- summarize(group_by(d, Contrast, Domestication, Fertilization),)
-```
-
-## Diff abund plot
-```{r}
-p<-ggplot(d, aes(x=Contrast, y=(ef_logFC), color=enrich_group)) + 
-  geom_point(size=6.5, alpha = 0.4) +
-  geom_point(shape = 1,size = 6.5,colour = "black", alpha=0.4)+
-  geom_vline(xintercept = 1.5,color='gray80', linewidth = 0.25)+
-  geom_vline(xintercept = 2.5,color='gray80', linewidth = 0.25)+
-  geom_vline(xintercept = 3.5,color='gray80', linewidth = 0.25)+
-  scale_color_brewer(palette = 'Set1')+
-  labs(y='Log Fold Change')+
-  facet_grid(Domestication ~ Fertilization, scales = 'free') + 
-  theme_classic()+
-  theme(axis.text.x = element_text(angle = -90, hjust =0, vjust=0.5),
-        axis.line = element_line(colour = "black"),
-        legend.key = element_blank(),
-        strip.text.y = element_text(size=8, face="bold"), 
-        panel.border = element_rect(color= "black", linewidth=0.25, fill = NA), 
-        legend.title = element_blank(),
-        strip.background = element_blank(),
-        axis.title.x = element_blank());p
-```
-
-
-
-## S-EV v LV-Ef-Lf
+#Compare wild f to wild u
 ```{r}
 out.glom <- microbiomeMarker::run_deseq2(
-  uw, 
-  group="Groups",
+  p.w1, 
+  group="Fertilization",
   taxa_rank="Species",
   norm="RLE",
   transform="identity",
   p_adjust='fdr', 
   pvalue_cutoff=0.05)
-d.uw1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+w_seedling<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
   filter(., abs(ef_logFC) > 2) %>% 
-  mutate(., Fertilization = "Unfertilized") %>% 
-  mutate(., Domestication = "Wild") 
+  mutate(., Stage = "Seedling")
 
 out.glom <- microbiomeMarker::run_deseq2(
-  um, 
-  group="Groups",
+  p.w2, 
+  group="Fertilization",
   taxa_rank="Species",
   norm="RLE",
   transform="identity",
   p_adjust='fdr', 
   pvalue_cutoff=0.05)
-d.um1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+w_earlyveg<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
   filter(., abs(ef_logFC) > 2) %>% 
-  mutate(., Fertilization = "Unfertilized") %>% 
-  mutate(., Domestication = "Modern") 
+  mutate(., Stage = "Early_Vegetative")
 
 out.glom <- microbiomeMarker::run_deseq2(
-  fw, 
-  group="Groups",
+  p.w3, 
+  group="Fertilization",
   taxa_rank="Species",
   norm="RLE",
   transform="identity",
   p_adjust='fdr', 
   pvalue_cutoff=0.05)
-d.fw1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+w_lateveg<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Stage = "Late_Vegetative")
+
+out.glom <- microbiomeMarker::run_deseq2(
+  p.w4, 
+  group="Fertilization",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+w_earlyflower<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Stage = "Early_Flower")
+
+out.glom <- microbiomeMarker::run_deseq2(
+  p.w5, 
+  group="Fertilization",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+w_lateflower<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Stage = "Late_Flower") 
+
+d.wild <- rbind(w_seedling, w_earlyveg, w_lateveg, w_earlyflower, w_lateflower)
+```
+
+
+## Add functions 
+```{r}
+dflist <- d.wild$feature
+keggsub <- filter(kegg, Species %in% dflist)
+names(d.wild)[names(d.wild) == 'feature'] <- 'Species'
+df.kegg <- left_join(d.wild,keggsub, by = 'Species')
+
+d<- pivot_longer(df.kegg, cols=hcnA:nosZ, names_to = 'Gene', values_to = 'value') %>%   filter(!value==0)
+
+
+d$Function <- ifelse(d$Gene=="hcnA", "Biocontrol",
+                        ifelse(d$Gene=="budA","Biocontrol",
+                               ifelse(d$Gene=="budC","Biocontrol",
+                                      ifelse(d$Gene=="E3.2.1.6","Biocontrol",                                             ifelse(d$Gene=="E3.2.1.14","Biocontrol",                                                    ifelse(d$Gene=="phlD","Biocontrol",                                                       ifelse(d$Gene=="ituA","Biocontrol",  
+                      ifelse(d$Gene=="fenA", "Biocontrol",
+                        ifelse(d$Gene=="srfAA","Biocontrol",
+                               ifelse(d$Gene=="rifM","Biocontrol",
+                                      ifelse(d$Gene=="phzE","Biocontrol",
+                                             ifelse(d$Gene=="ipdC","Stress",                                                    ifelse(d$Gene=="acdS","Stress",                                                           ifelse(d$Gene=="mbtI","Siderophore",                                                    ifelse(d$Gene=="entA", "Siderophore",
+        ifelse(d$Gene=="pchB","Siderophore",
+           ifelse(d$Gene=="bglX","C decomposition",
+              ifelse(d$Gene=="bglB","C decomposition",
+                 ifelse(d$Gene=="E3.2.1.21","C decomposition",                                          ifelse(d$Gene=="amiE","N decomposition",    
+ifelse(d$Gene=="ureC","N decomposition",                                                    ifelse(d$Gene=="pqqC", "PO4 solubility",
+        ifelse(d$Gene=="phoA","P decomposition",
+           ifelse(d$Gene=="phoD","P decomposition",
+              ifelse(d$Gene=="PHO","P decomposition",
+                 ifelse(d$Gene=="appA","P decomposition",                                          ifelse(d$Gene=="phoN","P decomposition",                             ifelse(d$Gene=="aslA","S decomposition",                                                    ifelse(d$Gene=="nifH", "N-fixation",
+        ifelse(d$Gene=="nifD","N-fixation",
+           ifelse(d$Gene=="nifK","N-fixation",
+              ifelse(d$Gene=="pmoA-amoA","Nitrification",
+                 ifelse(d$Gene=="hao","Nitrification",                                          ifelse(d$Gene=="nirB","Dissimilatory nitrate reduction",    
+ifelse(d$Gene=="nirD","Dissimilatory nitrate reduction",                                   ifelse(d$Gene=="nrfA", "Dissimilatory nitrate reduction",
+        ifelse(d$Gene=="nirA","Assimilatory nitrate reduction",
+           ifelse(d$Gene=="NIT-6","Assimilatory nitrate reduction",
+              ifelse(d$Gene=="narG","Denitrification",
+                 ifelse(d$Gene=="narH","Denitrification",                                          ifelse(d$Gene=="nirK","Denitrification",    
+ ifelse(d$Gene=="nirS","Denitrification",                                   ifelse(d$Gene=="norB", "Denitrification",
+        ifelse(d$Gene=="norC","Denitrification",
+          ifelse(d$Gene=='nosZ','Denitrification',NA)))))))))))))))))))))))))))))))))))))))))))))
+#d<-d %>% dplyr::select(Species, enrich_group, Fertilization, Domestication,Contrast, ef_logFC, padj, Gene, Function)
+d.sum <- summarize(group_by(d, Species, enrich_group, Stage, Function),
+                   n=(n), mean = mean(ef_logFC)) %>% 
+  filter(., Function != 'Assimilatory nitrate reduction') %>% 
+  filter(., Function != 'Dissimilatory nitrate reduction') %>% 
+  filter(., Function != 'Denitrification')
+
+d.sum <- d.sum %>%
+     mutate(Stage = as_factor(Stage)) %>%
+mutate(Stage = fct_relevel(Stage,  "Seedling", "Early_Vegetative","Late_Vegetative", "Early_Flower", "Late_Flower"))
+mutate(Function = as_factor(Function)) %>%
+mutate(Function = fct_relevel(Function,  "Biocontrol", "Stress","S decomposition", "C decomposition","N-fixation", "N decomposition", "Nitrification", "Siderophore", "P decomposition", "PO4 solubility")) %>% 
+  mutate(enrich_group = as_factor(enrich_group)) %>%
+mutate(enrich_group = fct_relevel(enrich_group,  "Fertilized", "Unfertilized")) 
+
+table(d.sum$Stage)
+#write.csv(d.sum, "wild_fertVunfert.csv")
+
+```
+
+
+# Compare mod and wild per time point
+## Seedling
+```{r}
+out.glom <- microbiomeMarker::run_deseq2(
+  p.f1, 
+  group="Domestication",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Wild","Modern"))
+f_seedling<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
   filter(., abs(ef_logFC) > 2) %>% 
   mutate(., Fertilization = "Fertilized") %>% 
-  mutate(., Domestication = "Wild") 
+  mutate(., Stage = "Seedling")
+```
 
+## early Veg
+```{r}
 out.glom <- microbiomeMarker::run_deseq2(
-  fm, 
-  group="Groups",
+  p.f2, 
+  group="Domestication",
   taxa_rank="Species",
   norm="RLE",
   transform="identity",
   p_adjust='fdr', 
   pvalue_cutoff=0.05)
-d.fm1235<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+f_earlyveg<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
   filter(., abs(ef_logFC) > 2) %>% 
   mutate(., Fertilization = "Fertilized") %>% 
-  mutate(., Domestication = "Modern") 
-
-d.1235 <- rbind(d.uw1235, d.um1235, d.fw1235, d.fm1235)
-x = tapply(d.1235$ef_logFC, d.1235$feature, function(x) max(x))
-x = sort(x, TRUE)
-d.1235$feature = factor(as.character(d.1235$feature), levels=names(x))
-d.1235.count <- summarise(group_by(d.1235, enrich_group, Domestication, Fertilization), n=n())
+  mutate(., Stage = "Early_Vegetative")
 ```
 
+## Late Veg
 ```{r}
-p<-ggplot(d.1235, aes(x=enrich_group, y=(ef_logFC), color=enrich_group)) + 
-  geom_point(size=6.5, alpha = 0.4) +
-  geom_point(shape = 1,size = 6.5,colour = "black", alpha=0.4)+
-  scale_color_brewer(palette = 'Set1')+
-  labs(y='Log Fold Change')+
-  facet_wrap(Domestication ~ Fertilization, scales = 'free') + 
-  theme_classic()+
-  theme(axis.line = element_line(colour = "black"),
-        legend.key = element_blank(),
-        strip.text.y = element_text(size=8, face="bold"), 
-        legend.title = element_blank(),
-        strip.background = element_blank(),
-        axis.title.x = element_blank());p
+out.glom <- microbiomeMarker::run_deseq2(
+  p.f3, 
+  group="Domestication",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05,
+  contrast=c("Wild","Modern"))
+f_lateveg<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Stage = "Late_Vegetative")
+```
+
+## Early Flower
+```{r}
+out.glom <- microbiomeMarker::run_deseq2(
+  p.f4, 
+  group="Domestication",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+f_earlyflower<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Stage = "Early_Flower")
+```
+
+## Late Flower
+```{r}
+out.glom <- microbiomeMarker::run_deseq2(
+  p.f5, 
+  group="Domestication",
+  taxa_rank="Species",
+  norm="RLE",
+  transform="identity",
+  p_adjust='fdr', 
+  pvalue_cutoff=0.05)
+f_lateflower<-data.frame(microbiomeMarker::marker_table(out.glom)) %>% 
+  filter(., abs(ef_logFC) > 2) %>% 
+  mutate(., Fertilization = "Fertilized") %>% 
+  mutate(., Stage = "Late_Flower")
 ```
 
